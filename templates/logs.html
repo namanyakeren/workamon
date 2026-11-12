@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block crumb %}Log{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Log aplikasi</h1>
+    <p class="sub">Bug, error fungsi, audit aksi, dan kejadian penting. {{ total }} entri tersimpan.</p>
+  </div>
+  <div class="page-actions">
+    <a class="btn" href="/maintenance">Kelola database</a>
+  </div>
+</div>
+
+<section class="panel">
+  <form class="filter-bar" method="get" action="/logs">
+    <label class="field field-inline">
+      <span>Level</span>
+      <select name="level">
+        <option value="ALL"{% if level == "ALL" %} selected{% endif %}>Semua</option>
+        <option value="INFO"{% if level == "INFO" %} selected{% endif %}>INFO</option>
+        <option value="WARN"{% if level == "WARN" %} selected{% endif %}>WARN</option>
+        <option value="ERROR"{% if level == "ERROR" %} selected{% endif %}>ERROR</option>
+      </select>
+    </label>
+    <label class="field field-grow">
+      <span>Cari pesan atau target</span>
+      <input type="search" name="q" value="{{ query }}" placeholder="contoh: docker, timeout, login">
+    </label>
+    <div class="filter-actions">
+      <button type="submit" class="btn btn-primary">Terapkan</button>
+      <a class="btn btn-quiet" href="/logs">Reset</a>
+    </div>
+  </form>
+</section>
+
+<section class="panel panel-flush">
+  {% if rows|length > 0 %}
+  <div class="table-wrap">
+    <table class="table table-logs">
+      <thead><tr><th>Waktu</th><th>Level</th><th>Target</th><th>Pesan</th></tr></thead>
+      <tbody>
+        {% for log in rows %}
+        <tr class="log-row log-row-{{ log.level_class }}">
+          <td class="nowrap"><time data-ts="{{ log.ts }}" title="{{ log.time_text }}">{{ log.ago }}</time><div class="mono-sub">{{ log.time_text }}</div></td>
+          <td><span class="level level-{{ log.level_class }}">{{ log.level }}</span></td>
+          <td class="mono-sub">{{ log.target }}</td>
+          <td class="log-message">{{ log.message }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty">Tidak ada log yang cocok dengan filter.</div>
+  {% endif %}
+</section>
+
+<div class="pagination">
+  <span>Halaman {{ page }} dari {{ total_pages }}</span>
+  <div class="pagination-actions">
+    {% if prev_link %}<a class="btn btn-sm" href="{{ prev_link }}">← Sebelumnya</a>{% endif %}
+    {% if next_link %}<a class="btn btn-sm" href="{{ next_link }}">Berikutnya →</a>{% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block crumb %}Pemeliharaan{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Pemeliharaan</h1>
+    <p class="sub">Bersihkan penyimpanan, pangkas riwayat, dan kelola objek Docker.</p>
+  </div>
+</div>
+
+<div class="grid-main">
+  <section class="panel">
+    <header class="panel-head"><h2>Penyimpanan host</h2><span class="panel-sub">{{ disk.path }}</span></header>
+    <div class="big-meter"><span style="width: {{ disk.pct }}%"></span></div>
+    <div class="metric-line">
+      <strong>{{ disk.used_text }}</strong>
+      <span>terpakai dari {{ disk.total_text }} ({{ disk.pct_text }})</span>
+    </div>
+    <p class="hint">Angka diambil langsung dari filesystem host yang dipasang ke aplikasi.</p>
+  </section>
+
+  <section class="panel">
+    <header class="panel-head"><h2>Database</h2><span class="panel-sub">{{ db.size_text }} / {{ db.max_text }}</span></header>
+    <div class="big-meter"><span style="width: {{ db.size_pct }}%"></span></div>
+    <div class="metric-line">
+      <strong>{{ db.size_text }}</strong>
+      <span>dari batas {{ db.max_text }}</span>
+    </div>
+    <dl class="kv kv-compact">
+      <dt>Metrik sistem</dt><dd>{{ db.system_rows }} baris</dd>
+      <dt>Metrik container</dt><dd>{{ db.container_rows }} baris</dd>
+      <dt>Log aplikasi</dt><dd>{{ db.log_rows }} baris</dd>
+      <dt>Data tertua</dt><dd>{{ db.oldest_text }}</dd>
+      <dt>Data terbaru</dt><dd>{{ db.newest_text }}</dd>
+    </dl>
+    <p class="hint">
+      Sampel sistem setiap {{ db.sample_secs }} detik, riwayat container setiap {{ db.container_sample_secs }} detik,
+      log disimpan {{ db.retention_days }} hari. Jika ukuran menyentuh batas, data tertua dihapus otomatis.
+    </p>
+  </section>
+</div>
+
+<section class="panel">
+  <header class="panel-head">
+    <div><h2>Bersihkan database</h2><p class="panel-sub">Tindakan langsung pada file SQLite</p></div>
+  </header>
+  <div class="action-grid">
+    <form class="action-card" method="post" action="/maintenance/db/trim">
+      <div><strong>Pangkas ke batas</strong><p>Hapus data tertua sampai ukuran database kembali di bawah {{ db.max_text }}, lalu rapikan file.</p></div>
+      <button type="submit" class="btn btn-sm">Pangkas</button>
+    </form>
+    <form class="action-card" method="post" action="/maintenance/db/vacuum">
+      <div><strong>VACUUM</strong><p>Menulis ulang file database agar ruang kosong benar-benar dikembalikan ke disk.</p></div>
+      <button type="submit" class="btn btn-sm">Jalankan</button>
+    </form>
+    <form class="action-card" method="post" action="/maintenance/db/cleanup-logs">
+      <div><strong>Hapus log lama</strong><p>Buang log yang lebih tua dari jumlah hari tertentu.</p></div>
+      <div class="inline-control">
+        <input type="number" name="days" min="1" max="3650" value="{{ db.retention_days }}" aria-label="Hari retensi">
+        <button type="submit" class="btn btn-sm">Hapus</button>
+      </div>
+    </form>
+    <form class="action-card" method="post" action="/maintenance/db/clear-logs" data-confirm="Hapus semua log aplikasi?">
+      <div><strong>Kosongkan log</strong><p>Hapus seluruh riwayat log aplikasi. Metrik tetap disimpan.</p></div>
+      <input type="hidden" name="confirm" value="yes">
+      <button type="submit" class="btn btn-sm btn-danger">Kosongkan</button>
+    </form>
+    <form class="action-card" method="post" action="/maintenance/db/clear-metrics" data-confirm="Hapus semua riwayat metrik? Tindakan ini tidak bisa dibatalkan.">
+      <div><strong>Kosongkan metrik</strong><p>Hapus seluruh riwayat sistem dan container. Data baru tetap dicatat setelahnya.</p></div>
+      <input type="hidden" name="confirm" value="yes">
+      <button type="submit" class="btn btn-sm btn-danger">Kosongkan</button>
+    </form>
+  </div>
+</section>
+
+<section class="panel">
+  <header class="panel-head">
+    <div><h2>Docker</h2><p class="panel-sub">Pemakaian disk dan pembersihan objek tidak terpakai</p></div>
+    {% if docker_ok %}<a class="link" href="/maintenance">Hitung ulang →</a>{% endif %}
+  </header>
+  {% if not docker_ok %}
+  <div class="notice notice-warn">
+    <strong>Docker tidak tersedia.</strong>
+    {{ docker_error or "Socket Docker tidak dapat diakses." }}
+  </div>
+  {% else %}
+  {% if df %}
+  <div class="table-wrap">
+    <table class="table table-compact">
+      <thead><tr><th>Jenis</th><th class="right">Ukuran</th><th class="right">Jumlah</th><th class="right">Dapat dibebaskan</th></tr></thead>
+      <tbody>
+        <tr><td>Image</td><td class="num right">{{ df.images_size_text }}</td><td class="num right">{{ df.images_count }}</td><td class="num right">{{ df.images_reclaimable_text }}</td></tr>
+        <tr><td>Container</td><td class="num right">{{ df.containers_size_text }}</td><td class="num right">{{ df.containers_count }}</td><td class="num right">{{ df.containers_reclaimable_text }}</td></tr>
+        <tr><td>Volume</td><td class="num right">{{ df.volumes_size_text }}</td><td class="num right">{{ df.volumes_count }}</td><td class="num right">{{ df.volumes_reclaimable_text }}</td></tr>
+        <tr><td>Build cache</td><td class="num right">{{ df.build_size_text }}</td><td class="num right">{{ df.build_count }}</td><td class="num right">{{ df.build_reclaimable_text }}</td></tr>
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty">Data pemakaian Docker tidak tersedia.</div>
+  {% endif %}
+
+  <div class="subhead">Prune</div>
+  <div class="action-grid">
+    <form class="action-card" method="post" action="/maintenance/prune/containers" data-confirm="Hapus semua container yang berhenti?">
+      <div><strong>Container berhenti</strong><p>Menghapus container dengan status exited atau created.</p></div>
+      <input type="hidden" name="confirm" value="yes">
+      <button type="submit" class="btn btn-sm">Prune</button>
+    </form>
+    <form class="action-card" method="post" action="/maintenance/prune/images" data-confirm="Hapus image dangling?">
+      <div><strong>Image dangling</strong><p>Menghapus image tanpa tag yang tidak dipakai container.</p></div>
+      <input type="hidden" name="confirm" value="yes">
+      <button type="submit" class="btn btn-sm">Prune</button>
+    </form>
+    <form class="action-card" method="post" action="/maintenance/prune/build" data-confirm="Hapus seluruh build cache?">
+      <div><strong>Build cache</strong><p>Menghapus cache build Docker yang tidak aktif.</p></div>
+      <input type="hidden" name="confirm" value="yes">
+      <button type="submit" class="btn btn-sm">Prune</button>
+    </form>
+    <form class="action-card" method="post" action="/maintenance/prune/networks" data-confirm="Hapus network yang tidak dipakai?">
+      <div><strong>Network</strong><p>Menghapus network Docker yang tidak terhubung ke container.</p></div>
+      <input type="hidden" name="confirm" value="yes">
+      <button type="submit" class="btn btn-sm">Prune</button>
+    </form>
+    <form class="action-card action-card-danger" method="post" action="/maintenance/prune/volumes" data-confirm="Hapus volume yang tidak dipakai? Data di dalamnya akan hilang.">
+      <div><strong>Volume tidak terpakai</strong><p>Berbahaya: data volume yang tidak lagi dipakai container akan dihapus permanen.</p></div>
+      <input type="hidden" name="confirm" value="yes">
+      <button type="submit" class="btn btn-sm btn-danger">Prune volume</button>
+    </form>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

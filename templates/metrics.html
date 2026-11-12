@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block crumb %}Metrik{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Metrik</h1>
+    <p class="sub">Riwayat pemakaian CPU, memori, penyimpanan, dan container.</p>
+  </div>
+  <div class="range-tabs" role="group" aria-label="Rentang waktu">
+    {% for range in ranges %}
+    <a class="range-tab{% if range.active %} is-active{% endif %}" href="/metrics?range={{ range.key }}">{{ range.label }}</a>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="stat-grid stat-grid-4">
+  <article class="stat">
+    <div class="stat-head"><span class="stat-label">CPU rata-rata</span><span class="stat-chip">maks {{ summary.cpu_max_text }}</span></div>
+    <div class="stat-value">{{ summary.cpu_avg_text }}</div>
+    <div class="stat-foot">{{ summary.sample_count }} titik dalam {{ summary.range_label }}</div>
+  </article>
+  <article class="stat">
+    <div class="stat-head"><span class="stat-label">RAM rata-rata</span><span class="stat-chip">maks {{ summary.mem_max_text }}</span></div>
+    <div class="stat-value">{{ summary.mem_avg_text }}</div>
+    <div class="stat-foot">Dihitung dari used / total</div>
+  </article>
+  <article class="stat">
+    <div class="stat-head"><span class="stat-label">Disk sekarang</span><span class="stat-chip">{{ summary.disk_now_pct }}</span></div>
+    <div class="stat-value stat-value-sm">{{ summary.disk_now_text }}</div>
+    <div class="stat-foot">{{ summary.disk_path }}</div>
+  </article>
+  <article class="stat">
+    <div class="stat-head"><span class="stat-label">Container</span><span class="stat-chip">saat ini</span></div>
+    <div class="stat-value">{{ summary.containers_now }}</div>
+    <div class="stat-foot">{{ summary.containers_running_now }} berjalan</div>
+  </article>
+</div>
+
+<section class="panel">
+  <header class="panel-head">
+    <div><h2>CPU</h2><p class="panel-sub">Persentase pemakaian seluruh core</p></div>
+  </header>
+  {{ cpu_chart|safe }}
+</section>
+
+<section class="panel">
+  <header class="panel-head">
+    <div><h2>Memori</h2><p class="panel-sub">Persentase RAM terpakai</p></div>
+  </header>
+  {{ mem_chart|safe }}
+</section>
+
+<section class="panel">
+  <header class="panel-head">
+    <div><h2>Penyimpanan</h2><p class="panel-sub">Persentase filesystem host</p></div>
+  </header>
+  {{ disk_chart|safe }}
+</section>
+
+<section class="panel">
+  <header class="panel-head">
+    <div><h2>Container</h2><p class="panel-sub">Jumlah container berjalan</p></div>
+  </header>
+  {{ containers_chart|safe }}
+</section>
+
+<section class="panel">
+  <header class="panel-head">
+    <div><h2>Sampel terbaru</h2><p class="panel-sub">50 data terakhir</p></div>
+    <span class="hint">Database {{ db.size_text }} / {{ db.max_text }}</span>
+  </header>
+  {% if rows|length > 0 %}
+  <div class="table-wrap">
+    <table class="table table-compact">
+      <thead>
+        <tr><th>Waktu</th><th class="right">CPU</th><th class="right">RAM</th><th class="right">Disk</th><th class="right">Load 1m</th><th class="right">Suhu</th><th class="right">Container</th></tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td class="nowrap"><time data-ts="{{ row.ts }}" title="{{ row.time_text }}">{{ row.time_text }}</time></td>
+          <td class="num right">{{ row.cpu_text }}</td>
+          <td class="num right">{{ row.mem_text }}</td>
+          <td class="num right">{{ row.disk_text }}</td>
+          <td class="num right">{{ row.load_text }}</td>
+          <td class="num right">{{ row.temp_text }}</td>
+          <td class="num right">{{ row.containers_text }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty">Belum ada sampel pada rentang ini.</div>
+  {% endif %}
+</section>
+{% endblock %}

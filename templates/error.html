@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="id" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>{{ title }} · WORKA MON</title>
+  <script>
+    (function () {
+      try {
+        var saved = localStorage.getItem('workamon-theme');
+        if (saved === 'dark' || saved === 'light') {
+          document.documentElement.dataset.theme = saved;
+        }
+      } catch (error) {}
+    })();
+  </script>
+  <link rel="stylesheet" href="/static/app.css">
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+</head>
+<body class="error-body">
+  <main class="error-card">
+    <div class="error-code">{{ status }}</div>
+    <h1>{{ title }}</h1>
+    <p>{{ message }}</p>
+    <div class="error-actions">
+      <a class="btn btn-primary" href="/">Kembali ke ringkasan</a>
+      <a class="btn" href="/containers">Container</a>
+    </div>
+  </main>
+</body>
+</html>

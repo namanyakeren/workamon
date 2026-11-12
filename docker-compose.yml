@@ -1,0 +1,36 @@
+services:
+  workamon:
+    build: .
+    image: workamon:latest
+    container_name: workamon
+    restart: unless-stopped
+    ports:
+      - "${WORKAMON_PORT:-8080}:8080"
+    environment:
+      WORKAMON_ADDR: 0.0.0.0:8080
+      WORKAMON_USER: ${WORKAMON_USER:-admin}
+      WORKAMON_PASSWORD: ${WORKAMON_PASSWORD:-workamon}
+      WORKAMON_DB: /data/workamon.db
+      WORKAMON_DB_MAX_MB: ${WORKAMON_DB_MAX_MB:-10}
+      WORKAMON_SAMPLE_SECS: ${WORKAMON_SAMPLE_SECS:-30}
+      WORKAMON_CONTAINER_SAMPLE_SECS: ${WORKAMON_CONTAINER_SAMPLE_SECS:-300}
+      WORKAMON_SESSION_HOURS: ${WORKAMON_SESSION_HOURS:-168}
+      WORKAMON_LOG_RETENTION_DAYS: ${WORKAMON_LOG_RETENTION_DAYS:-14}
+      WORKAMON_HOST_ROOT: /host
+      RUST_LOG: ${RUST_LOG:-workamon=info,tower_http=warn,warn}
+      TZ: ${TZ:-Asia/Jakarta}
+    volumes:
+      - workamon-data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /:/host:ro
+    group_add:
+      - "${DOCKER_GID:-999}"
+    user: "1000:1000"
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  workamon-data:

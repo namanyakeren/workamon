@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block crumb %}Ringkasan{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Ringkasan server</h1>
+    <p class="sub">{{ system.hostname }}{% if system.os %} · {{ system.os }}{% endif %}</p>
+  </div>
+  <div class="page-meta">Diperbarui <time data-live-ts="{{ system.ts }}">{{ system.ts_text }}</time></div>
+</div>
+
+{% if default_creds %}
+<div class="notice notice-warn">
+  <strong>Kredensial default masih dipakai.</strong>
+  Set <code>WORKAMON_PASSWORD</code> di environment sebelum server ini dibuka ke jaringan.
+</div>
+{% endif %}
+
+{% if not has_data %}
+<div class="notice">Menunggu sampel pertama. Data akan muncul dalam beberapa detik.</div>
+{% endif %}
+
+<div class="stat-grid">
+  <article class="stat">
+    <div class="stat-head"><span class="stat-label">CPU</span><span class="stat-chip">{{ system.cpu_count }} core</span></div>
+    <div class="stat-value"><span data-live="cpu_text">{{ system.cpu_text }}</span></div>
+    <div class="meter"><span data-bar="cpu" style="width: {{ system.cpu_pct }}%"></span></div>
+    <div class="stat-foot">Load {{ system.load1_text }} · {{ system.temp_text }}</div>
+  </article>
+  <article class="stat">
+    <div class="stat-head"><span class="stat-label">Memori</span><span class="stat-chip" data-live="mem_pct_text">{{ system.mem_pct_text }}</span></div>
+    <div class="stat-value"><span data-live="mem_text">{{ system.mem_text }}</span></div>
+    <div class="meter"><span data-bar="mem" style="width: {{ system.mem_pct }}%"></span></div>
+    <div class="stat-foot">Swap {{ system.swap_text }}</div>
+  </article>
+  <article class="stat">
+    <div class="stat-head"><span class="stat-label">Penyimpanan</span><span class="stat-chip" data-live="disk_pct_text">{{ system.disk_pct_text }}</span></div>
+    <div class="stat-value"><span data-live="disk_text">{{ system.disk_text }}</span></div>
+    <div class="meter"><span data-bar="disk" style="width: {{ system.disk_pct }}%"></span></div>
+    <div class="stat-foot">{{ system.disk_path }}</div>
+  </article>
+  <article class="stat">
+    <div class="stat-head"><span class="stat-label">Uptime</span><span class="stat-chip">host</span></div>
+    <div class="stat-value"><span data-live="uptime_text">{{ system.uptime_text }}</span></div>
+    <div class="stat-foot">{{ counts.total }} container · {{ counts.running }} berjalan</div>
+  </article>
+</div>
+
+<div class="grid-main">
+  <section class="panel">
+    <header class="panel-head">
+      <div>
+        <h2>Tren terakhir</h2>
+        <p class="panel-sub">{{ sample_count }} sampel terakhir</p>
+      </div>
+      <a class="link" href="/metrics">Semua metrik →</a>
+    </header>
+    <div class="chart-row">
+      <div class="chart-cell">
+        <div class="chart-caption"><span>CPU</span><strong data-live="cpu_text">{{ system.cpu_text }}</strong></div>
+        {{ cpu_chart|safe }}
+      </div>
+      <div class="chart-cell">
+        <div class="chart-caption"><span>RAM</span><strong data-live="mem_pct_text">{{ system.mem_pct_text }}</strong></div>
+        {{ mem_chart|safe }}
+      </div>
+    </div>
+    <div class="chart-cell chart-cell-wide">
+      <div class="chart-caption"><span>Disk</span><strong data-live="disk_pct_text">{{ system.disk_pct_text }}</strong></div>
+      {{ disk_chart|safe }}
+    </div>
+  </section>
+
+  <section class="panel">
+    <header class="panel-head">
+      <div>
+        <h2>Container</h2>
+        <p class="panel-sub">{{ counts.total }} terdeteksi</p>
+      </div>
+      <a class="link" href="/containers">Kelola →</a>
+    </header>
+    <div class="count-strip">
+      <div><strong data-live="containers_running">{{ counts.running }}</strong><span>berjalan</span></div>
+      <div><strong data-live="containers_stopped">{{ counts.stopped }}</strong><span>berhenti</span></div>
+      <div><strong data-live="containers_unhealthy">{{ counts.unhealthy }}</strong><span>unhealthy</span></div>
+    </div>
+    {% if containers|length > 0 %}
+    <ul class="mini-list">
+      {% for c in containers %}
+      <li>
+        <span class="dot dot-{{ c.state_class }}"></span>
+        <a href="/containers/{{ c.id }}">{{ c.name }}</a>
+        <span class="mini-meta">{{ c.cpu_text }} · {{ c.mem_text }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="empty">Tidak ada container terdeteksi.</div>
+    {% endif %}
+  </section>
+</div>
+
+<section class="panel">
+  <header class="panel-head">
+    <div>
+      <h2>Aktivitas terbaru</h2>
+      <p class="panel-sub">Log aplikasi dan audit aksi</p>
+    </div>
+    <a class="link" href="/logs">Semua log →</a>
+  </header>
+  {% if logs|length > 0 %}
+  <div class="table-wrap">
+    <table class="table table-compact">
+      <thead><tr><th>Waktu</th><th>Level</th><th>Target</th><th>Pesan</th></tr></thead>
+      <tbody>
+        {% for log in logs %}
+        <tr>
+          <td class="nowrap"><time data-ts="{{ log.ts }}" title="{{ log.time_text }}">{{ log.ago }}</time></td>
+          <td><span class="level level-{{ log.level_class }}">{{ log.level }}</span></td>
+          <td class="mono-sub">{{ log.target }}</td>
+          <td class="log-message">{{ log.message }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty">Belum ada log.</div>
+  {% endif %}
+</section>
+{% endblock %}

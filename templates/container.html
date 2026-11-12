@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block crumb %}Container / {{ c.name or info.name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <a class="back-link" href="/containers">← Semua container</a>
+    <h1>{{ c.name or info.name }}</h1>
+    <p class="sub">
+      <span class="status status-{{ c.state_class }}"><i></i>{{ c.state }}</span>
+      <span class="mono-sub">{{ info.id_short }}</span>
+    </p>
+  </div>
+  <div class="page-actions">
+    {% if c.running %}
+    <form method="post" action="/containers/{{ container_id }}/restart?back=detail" data-confirm="Restart container {{ c.name }}?">
+      <button type="submit" class="btn">Restart</button>
+    </form>
+    <form method="post" action="/containers/{{ container_id }}/stop?back=detail" data-confirm="Hentikan container {{ c.name }}?">
+      <button type="submit" class="btn btn-danger">Stop</button>
+    </form>
+    {% else %}
+    <form method="post" action="/containers/{{ container_id }}/start?back=detail">
+      <button type="submit" class="btn btn-primary">Start</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+<div class="stat-grid" data-container-stats="{{ container_id }}">
+  <article class="stat">
+    <div class="stat-head"><span class="stat-label">CPU</span><span class="stat-chip">live</span></div>
+    <div class="stat-value"><span data-cstats="cpu">{{ c.cpu_text }}</span></div>
+    <div class="meter"><span data-cbar="cpu" style="width: {{ c.cpu_pct }}%"></span></div>
+    <div class="stat-foot">Batas CPU mengikuti konfigurasi container</div>
+  </article>
+  <article class="stat">
+    <div class="stat-head"><span class="stat-label">Memori</span><span class="stat-chip" data-cstats="mem_pct">{{ c.mem_pct_text }}</span></div>
+    <div class="stat-value"><span data-cstats="mem">{{ c.mem_text }}</span></div>
+    <div class="meter"><span data-cbar="mem" style="width: {{ c.mem_pct }}%"></span></div>
+    <div class="stat-foot">RSS tanpa cache halaman</div>
+  </article>
+  <article class="stat">
+    <div class="stat-head"><span class="stat-label">Jaringan</span><span class="stat-chip">total</span></div>
+    <div class="stat-value stat-value-sm" data-cstats="net">{{ c.net_text }}</div>
+    <div class="stat-foot">Akumulasi sejak container dibuat</div>
+  </article>
+  <article class="stat">
+    <div class="stat-head"><span class="stat-label">Kesehatan</span><span class="stat-chip">healthcheck</span></div>
+    <div class="stat-value stat-value-sm">
+      {% if info.health != "—" %}
+      <span class="health health-{{ info.health_class }}">{{ info.health }}</span>
+      {% else %}
+      <span class="muted">Tidak ada healthcheck</span>
+      {% endif %}
+    </div>
+    <div class="stat-foot">Restart count {{ info.restart_count }}</div>
+  </article>
+</div>
+
+<div class="grid-main">
+  <section class="panel">
+    <header class="panel-head">
+      <div>
+        <h2>Riwayat 24 jam</h2>
+        <p class="panel-sub">{{ history_count }} titik data</p>
+      </div>
+    </header>
+    <div class="chart-cell">
+      <div class="chart-caption"><span>CPU</span><strong>{{ c.cpu_text }}</strong></div>
+      {{ cpu_chart|safe }}
+    </div>
+    <div class="chart-cell">
+      <div class="chart-caption"><span>Memori</span><strong>{{ c.mem_text }}</strong></div>
+      {{ mem_chart|safe }}
+    </div>
+  </section>
+
+  <section class="panel">
+    <header class="panel-head"><h2>Informasi</h2></header>
+    <dl class="kv">
+      <dt>Image</dt><dd class="mono-sub">{{ info.image }}</dd>
+      <dt>Command</dt><dd class="mono-sub">{{ info.command }}</dd>
+      <dt>Dibuat</dt><dd>{{ info.created_text }}</dd>
+      <dt>Dimulai</dt><dd>{{ info.started_text }}</dd>
+      <dt>Port</dt><dd class="mono-sub">{{ info.ports }}</dd>
+      <dt>Network</dt><dd class="mono-sub">{{ info.networks }}</dd>
+    </dl>
+    {% if info.mounts|length > 0 %}
+    <div class="subhead">Mount</div>
+    <ul class="mount-list">
+      {% for mount in info.mounts %}
+      <li><span class="mono-sub">{{ mount.source }}</span><span>→</span><span class="mono-sub">{{ mount.destination }}</span></li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </section>
+</div>
+
+<section class="panel">
+  <header class="panel-head">
+    <div>
+      <h2>Log container</h2>
+      <p class="panel-sub">150 baris terakhir</p>
+    </div>
+    <a class="link" href="/containers/{{ container_id }}">Muat ulang →</a>
+  </header>
+  {% if logs %}
+  <pre class="logs">{{ logs }}</pre>
+  {% else %}
+  <div class="empty">Tidak ada output log.</div>
+  {% endif %}
+</section>
+{% endblock %}

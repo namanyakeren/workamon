@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block crumb %}Container{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Container</h1>
+    <p class="sub">{{ counts.total }} terdeteksi · {{ counts.running }} berjalan · {{ counts.unhealthy }} unhealthy</p>
+  </div>
+  <div class="page-actions">
+    <a class="btn" href="/containers">Muat ulang</a>
+  </div>
+</div>
+
+{% if not docker_ok %}
+<div class="notice notice-warn">
+  <strong>Docker tidak tersedia.</strong>
+  {{ docker_error or "Pastikan socket Docker terpasang dan dapat diakses." }}
+</div>
+{% endif %}
+
+<section class="panel panel-flush">
+  {% if containers|length > 0 %}
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Nama</th>
+          <th>Status</th>
+          <th>Kesehatan</th>
+          <th>Image</th>
+          <th class="right">CPU</th>
+          <th>Memori</th>
+          <th>Port</th>
+          <th class="right">Aksi</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in containers %}
+        <tr>
+          <td>
+            <a class="strong" href="/containers/{{ c.id }}">{{ c.name }}</a>
+            <div class="mono-sub">{{ c.id_short }}</div>
+          </td>
+          <td>
+            <span class="status status-{{ c.state_class }}"><i></i>{{ c.state }}</span>
+            {% if c.status %}<div class="mono-sub">{{ c.status }}</div>{% endif %}
+          </td>
+          <td>
+            {% if c.health != "—" %}
+            <span class="health health-{{ c.health_class }}">{{ c.health }}</span>
+            {% else %}
+            <span class="muted">—</span>
+            {% endif %}
+          </td>
+          <td class="mono-sub" title="{{ c.image }}">{{ c.image_short }}</td>
+          <td class="num right">{{ c.cpu_text }}</td>
+          <td>
+            <div class="cell-value">{{ c.mem_text }}</div>
+            <div class="meter meter-sm"><span style="width: {{ c.mem_pct }}%"></span></div>
+          </td>
+          <td class="mono-sub" title="{{ c.ports }}">{{ c.ports }}</td>
+          <td class="right">
+            <div class="actions">
+              {% if c.running %}
+              <form method="post" action="/containers/{{ c.id }}/restart?back=list" data-confirm="Restart container {{ c.name }}?">
+                <button type="submit" class="btn btn-sm">Restart</button>
+              </form>
+              <form method="post" action="/containers/{{ c.id }}/stop?back=list" data-confirm="Hentikan container {{ c.name }}?">
+                <button type="submit" class="btn btn-sm btn-danger">Stop</button>
+              </form>
+              {% else %}
+              <form method="post" action="/containers/{{ c.id }}/start?back=list">
+                <button type="submit" class="btn btn-sm btn-primary">Start</button>
+              </form>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty">
+    {% if docker_ok %}Tidak ada container.{% else %}Daftar container tidak dapat dibaca.{% endif %}
+  </div>
+  {% endif %}
+</section>
+
+<p class="hint">
+  Statistik live diperbarui setiap {{ sample_secs }} detik. Riwayat container disimpan setiap {{ container_sample_secs }} detik.
+  Container yang berhenti tidak memiliki data CPU atau memori.
+</p>
+{% endblock %}

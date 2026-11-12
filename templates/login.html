@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="id" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Masuk · WORKA MON</title>
+  <script>
+    (function () {
+      try {
+        var saved = localStorage.getItem('workamon-theme');
+        if (saved === 'dark' || saved === 'light') {
+          document.documentElement.dataset.theme = saved;
+        }
+      } catch (error) {}
+    })();
+  </script>
+  <link rel="stylesheet" href="/static/app.css">
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+</head>
+<body class="login-body">
+  <main class="login-shell">
+    <section class="login-intro">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <rect x="3.5" y="4" width="17" height="5" rx="1"/>
+            <rect x="3.5" y="15" width="17" height="5" rx="1"/>
+            <path d="M7 6.5h.01M7 17.5h.01M10.5 6.5h6M10.5 17.5h6" stroke-linecap="round"/>
+          </svg>
+        </span>
+        <span class="brand-text"><strong>WORKA</strong><span>MON</span></span>
+      </div>
+      <h1>Server rumah,<br>tanpa awan.</h1>
+      <p>CPU, RAM, penyimpanan, dan container Docker dalam satu halaman. Semua data tinggal di mesin ini.</p>
+      <ul class="login-points">
+        <li><span>01</span> Satu pengguna, kredensial dari environment</li>
+        <li><span>02</span> Riwayat metrik tersimpan lokal di SQLite</li>
+        <li><span>03</span> Start, stop, dan restart container</li>
+      </ul>
+      <div class="login-foot">WORKA MON v{{ version }}</div>
+    </section>
+
+    <section class="login-panel">
+      <button type="button" class="icon-btn theme-toggle login-theme" id="theme-toggle" aria-label="Ganti tema terang atau gelap" title="Ganti tema (Shift + D)">
+        <svg class="icon-sun" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="10" cy="10" r="3.5"/><path d="M10 2v2M10 16v2M2 10h2M16 10h2M4.3 4.3l1.4 1.4M14.3 14.3l1.4 1.4M15.7 4.3l-1.4 1.4M5.7 14.3l-1.4 1.4" stroke-linecap="round"/></svg>
+        <svg class="icon-moon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M16.5 12.2A7 7 0 0 1 7.8 3.5a7 7 0 1 0 8.7 8.7z"/></svg>
+      </button>
+
+      <form class="login-form" method="post" action="/login">
+        <div class="login-head">
+          <h2>Masuk</h2>
+          <p>Gunakan kredensial yang diatur di konfigurasi server.</p>
+        </div>
+        {% if error %}
+        <div class="flash flash-error" role="alert">{{ error }}</div>
+        {% endif %}
+        <label class="field">
+          <span>Username</span>
+          <input type="text" name="username" autocomplete="username" required autofocus>
+        </label>
+        <label class="field">
+          <span>Password</span>
+          <input type="password" name="password" autocomplete="current-password" required>
+        </label>
+        <button type="submit" class="btn btn-primary btn-block">Masuk</button>
+      </form>
+      <p class="login-note">Akses ini tidak memakai HTTPS secara default. Gunakan reverse proxy bila server dibuka dari luar jaringan rumah.</p>
+    </section>
+  </main>
+  <script src="/static/app.js" defer></script>
+</body>
+</html>
