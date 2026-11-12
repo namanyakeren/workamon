@@ -1,6 +1,6 @@
 # WORKA MON
 
-Pemantau server rumah untuk Raspberry Pi dan mesin Linux kecil. Satu halaman
+Versi 0.2.0. Pemantau server rumah untuk Raspberry Pi dan mesin Linux kecil. Satu halaman
 untuk melihat CPU, RAM, penyimpanan host, dan container Docker, lengkap dengan
 riwayat SQLite, log aplikasi, serta aksi start/stop/restart container.
 
@@ -11,10 +11,16 @@ terang sebagai default, dan tombol tema gelap di kanan atas (atau `Shift + D`).
 
 - Ringkasan CPU, RAM, swap, disk, load average, suhu, dan uptime host.
 - Daftar container Docker: status, healthcheck, image, port, CPU, memori, jaringan.
-- Aksi start, stop, dan restart container langsung dari browser.
+- Aksi start, stop, restart, dan hapus container langsung dari browser.
+- Buat container baru dari image lokal, lengkap dengan command, environment,
+  port, volume, restart policy, dan opsi langsung dijalankan.
+- Menu Images untuk melihat image, inspect detail, menarik image baru dari
+  registry, menghapus image (termasuk force delete), dan prune image dangling.
 - Detail container: informasi inspect, mount, network, log 150 baris terakhir,
   dan grafik riwayat 24 jam.
-- Riwayat metrik 1 jam, 6 jam, 24 jam, dan 7 hari.
+- Riwayat metrik live, 1 jam, 6 jam, 24 jam, dan 7 hari. Tab live diperbarui
+  otomatis setiap 5 detik tanpa menunggu sampel database.
+- Antarmuka dua bahasa (Bahasa Indonesia dan English) dengan tombol ID/EN.
 - Log aplikasi (INFO/WARN/ERROR) yang dapat difilter, dicari, dan dipaginasi.
 - Pembersihan objek Docker: container berhenti, image dangling, build cache,
   network, dan volume tidak terpakai.
@@ -145,11 +151,12 @@ src/
   monitor.rs   loop sampling dan pemeliharaan
   web.rs       router dan handler HTTP
   state.rs     AppState, sesi, middleware auth
+  i18n.rs      kamus Bahasa Indonesia / English
   render.rs    MiniJinja dan grafik SVG
   logging.rs   layer tracing ke SQLite
   util.rs      format, disk, suhu, ANSI
 templates/     halaman MiniJinja
-assets/        CSS, JS, favicon
+assets/        CSS, JS, favicon, i18n.json
 ```
 
 ## Lisensi

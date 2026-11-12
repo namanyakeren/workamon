@@ -3,10 +3,15 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use bollard::container::LogOutput;
-use bollard::models::{ContainerInspectResponse, ContainerSummary};
+use bollard::models::{
+    ContainerCreateBody, ContainerInspectResponse, ContainerSummary, HostConfig, ImageInspect,
+    ImageSummary, PortBinding, RestartPolicy, RestartPolicyNameEnum,
+};
 use bollard::query_parameters::{
-    ListContainersOptionsBuilder, LogsOptionsBuilder, PruneBuildOptionsBuilder,
-    PruneImagesOptionsBuilder, PruneVolumesOptionsBuilder, StatsOptionsBuilder,
+    CreateContainerOptionsBuilder, CreateImageOptionsBuilder, ListContainersOptionsBuilder,
+    ListImagesOptionsBuilder, LogsOptionsBuilder, PruneBuildOptionsBuilder,
+    PruneImagesOptionsBuilder, PruneVolumesOptionsBuilder, RemoveContainerOptionsBuilder,
+    RemoveImageOptionsBuilder, StatsOptionsBuilder,
 };
 use bollard::Docker;
 use futures_util::StreamExt;
@@ -376,6 +381,193 @@ pub async fn prune(docker: &Docker, kind: &str) -> Result<PruneReport> {
         deleted,
         reclaimed: reclaimed.max(0) as u64,
     })
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct NewContainer {
+    pub name: String,
+    pub image: String,
+    pub cmd: Vec<String>,
+    pub env: Vec<String>,
+    /// (container port/protocol, host port)
+    pub ports: Vec<(String, String)>,
+    /// Docker bind strings such as /host/path:/container/path:ro
+    pub binds: Vec<String>,
+    pub restart: String,
+    pub start: bool,
+}
+
+pub async fn create_container(docker: &Docker, spec: &NewContainer) -> Result<String> {
+    let options = CreateContainerOptionsBuilder::default()
+        .name(&spec.name)
+        .build();
+
+    let mut exposed_ports = Vec::new();
+    let mut port_bindings = HashMap::new();
+    for (container_port, host_port) in &spec.ports {
+        exposed_ports.push(container_port.clone());
+        port_bindings.insert(
+            container_port.clone(),
+            Some(vec![PortBinding {
+                host_ip: None,
+                host_port: Some(host_port.clone()),
+            }]),
+        );
+    }
+
+    let restart_name = match spec.restart.as_str() {
+        "always" => Some(RestartPolicyNameEnum::ALWAYS),
+        "unless-stopped" => Some(RestartPolicyNameEnum::UNLESS_STOPPED),
+        "on-failure" => Some(RestartPolicyNameEnum::ON_FAILURE),
+        "no" | "" => Some(RestartPolicyNameEnum::NO),
+        _ => None,
+    };
+
+    let host_config = HostConfig {
+        binds: if spec.binds.is_empty() {
+            None
+        } else {
+            Some(spec.binds.clone())
+        },
+        port_bindings: if port_bindings.is_empty() {
+            None
+        } else {
+            Some(port_bindings)
+        },
+        restart_policy: restart_name.map(|name| RestartPolicy {
+            name: Some(name),
+            maximum_retry_count: None,
+        }),
+        ..Default::default()
+    };
+
+    let body = ContainerCreateBody {
+        image: Some(spec.image.clone()),
+        cmd: if spec.cmd.is_empty() {
+            None
+        } else {
+            Some(spec.cmd.clone())
+        },
+        env: if spec.env.is_empty() {
+            None
+        } else {
+            Some(spec.env.clone())
+        },
+        exposed_ports: if exposed_ports.is_empty() {
+            None
+        } else {
+            Some(exposed_ports)
+        },
+        host_config: Some(host_config),
+        ..Default::default()
+    };
+
+    let created = docker
+        .create_container(Some(options), body)
+        .await
+        .context("gagal membuat container")?;
+
+    if spec.start {
+        docker
+            .start_container(&created.id, None)
+            .await
+            .context("container dibuat tetapi gagal dijalankan")?;
+    }
+
+    Ok(created.id)
+}
+
+pub async fn remove_container(docker: &Docker, id: &str) -> Result<()> {
+    let options = RemoveContainerOptionsBuilder::default()
+        .force(true)
+        .v(false)
+        .build();
+    docker
+        .remove_container(id, Some(options))
+        .await
+        .with_context(|| format!("gagal menghapus container {id}"))
+}
+
+pub async fn list_images(docker: &Docker) -> Result<Vec<ImageSummary>> {
+    let options = ListImagesOptionsBuilder::default().all(true).build();
+    docker
+        .list_images(Some(options))
+        .await
+        .context("gagal membaca daftar image")
+}
+
+pub async fn inspect_image(docker: &Docker, reference: &str) -> Result<ImageInspect> {
+    docker
+        .inspect_image(reference)
+        .await
+        .with_context(|| format!("gagal memeriksa image {reference}"))
+}
+
+pub async fn pull_image(docker: &Docker, reference: &str) -> Result<String> {
+    let (from_image, tag) = split_reference(reference);
+    let mut builder = CreateImageOptionsBuilder::default().from_image(&from_image);
+    if let Some(tag) = tag.as_deref() {
+        builder = builder.tag(tag);
+    }
+    let options = builder.build();
+
+    let mut stream = docker.create_image(Some(options), None, None);
+    let mut last_status = String::new();
+    let mut last_id: Option<String> = None;
+    while let Some(item) = stream.next().await {
+        let info = item.context("gagal menarik image")?;
+        if let Some(detail) = info.error_detail {
+            let message = detail
+                .message
+                .unwrap_or_else(|| "registry menolak permintaan".into());
+            anyhow::bail!("{message}");
+        }
+        if let Some(status) = info.status {
+            if !status.trim().is_empty() {
+                last_status = status;
+            }
+        }
+        if let Some(id) = info.id {
+            if !id.trim().is_empty() {
+                last_id = Some(id);
+            }
+        }
+    }
+
+    Ok(last_id
+        .or_else(|| Some(from_image))
+        .filter(|_| last_status.is_empty())
+        .unwrap_or(last_status))
+}
+
+pub async fn remove_image(docker: &Docker, reference: &str, force: bool) -> Result<()> {
+    let options = RemoveImageOptionsBuilder::default().force(force).build();
+    docker
+        .remove_image(reference, Some(options), None)
+        .await
+        .with_context(|| format!("gagal menghapus image {reference}"))?;
+    Ok(())
+}
+
+fn split_reference(reference: &str) -> (String, Option<String>) {
+    let reference = reference.trim();
+    if reference.is_empty() {
+        return (String::new(), None);
+    }
+    if reference.contains('@') {
+        return (reference.to_string(), None);
+    }
+    let last_slash = reference.rfind('/');
+    let last_colon = reference.rfind(':');
+    if let Some(colon) = last_colon {
+        if last_slash.map_or(true, |slash| colon > slash) {
+            return (
+                reference[..colon].to_string(),
+                Some(reference[colon + 1..].to_string()),
+            );
+        }
+    }
+    (reference.to_string(), Some("latest".to_string()))
 }
 
 fn format_ports(summary: &ContainerSummary) -> String {

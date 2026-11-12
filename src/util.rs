@@ -4,6 +4,8 @@ use std::path::Path;
 use chrono::{Datelike, Local, TimeZone, Timelike};
 use percent_encoding::{utf8_percent_encode, AsciiSet, NON_ALPHANUMERIC};
 
+use crate::i18n::Lang;
+
 const QUERY_SET: &AsciiSet = &NON_ALPHANUMERIC
     .remove(b'-')
     .remove(b'_')
@@ -54,42 +56,53 @@ pub fn percent(used: u64, total: u64) -> f64 {
     }
 }
 
-pub fn fmt_duration(total_secs: u64) -> String {
+pub fn fmt_duration(lang: Lang, total_secs: u64) -> String {
     let days = total_secs / 86_400;
     let hours = (total_secs % 86_400) / 3_600;
     let minutes = (total_secs % 3_600) / 60;
     let seconds = total_secs % 60;
+    let (day, hour, minute, second) = match lang {
+        Lang::En => ("d", "h", "m", "s"),
+        Lang::Id => ("hari", "jam", "mnt", "dtk"),
+    };
 
     if days > 0 {
         if hours > 0 {
-            format!("{days} hari {hours} jam")
+            format!("{days} {day} {hours} {hour}")
         } else {
-            format!("{days} hari")
+            format!("{days} {day}")
         }
     } else if hours > 0 {
         if minutes > 0 {
-            format!("{hours} jam {minutes} mnt")
+            format!("{hours} {hour} {minutes} {minute}")
         } else {
-            format!("{hours} jam")
+            format!("{hours} {hour}")
         }
     } else if minutes > 0 {
-        format!("{minutes} mnt {seconds} dtk")
+        format!("{minutes} {minute} {seconds} {second}")
     } else {
-        format!("{seconds} dtk")
+        format!("{seconds} {second}")
     }
 }
 
-pub fn fmt_datetime(ts: i64) -> String {
+pub fn fmt_datetime(lang: Lang, ts: i64) -> String {
     let Some(dt) = Local.timestamp_opt(ts, 0).single() else {
         return "—".into();
     };
-    const MONTHS: [&str; 12] = [
+    const MONTHS_EN: [&str; 12] = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    ];
+    const MONTHS_ID: [&str; 12] = [
         "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des",
     ];
+    let months = match lang {
+        Lang::En => MONTHS_EN,
+        Lang::Id => MONTHS_ID,
+    };
     format!(
         "{:02} {} {} {:02}:{:02}:{:02}",
         dt.day(),
-        MONTHS[(dt.month0() as usize).min(11)],
+        months[(dt.month0() as usize).min(11)],
         dt.year(),
         dt.hour(),
         dt.minute(),
@@ -113,19 +126,34 @@ pub fn fmt_day(ts: i64) -> String {
         .unwrap_or_else(|| "—".into())
 }
 
-pub fn time_ago(ts: i64) -> String {
+pub fn time_ago(lang: Lang, ts: i64) -> String {
     let delta = now() - ts;
     if delta <= 5 {
-        return "baru saja".into();
+        return match lang {
+            Lang::En => "just now".into(),
+            Lang::Id => "baru saja".into(),
+        };
     }
     if delta < 60 {
-        format!("{delta} dtk lalu")
+        match lang {
+            Lang::En => format!("{delta}s ago"),
+            Lang::Id => format!("{delta} dtk lalu"),
+        }
     } else if delta < 3_600 {
-        format!("{} mnt lalu", delta / 60)
+        match lang {
+            Lang::En => format!("{}m ago", delta / 60),
+            Lang::Id => format!("{} mnt lalu", delta / 60),
+        }
     } else if delta < 86_400 {
-        format!("{} jam lalu", delta / 3_600)
+        match lang {
+            Lang::En => format!("{}h ago", delta / 3_600),
+            Lang::Id => format!("{} jam lalu", delta / 3_600),
+        }
     } else {
-        format!("{} hari lalu", delta / 86_400)
+        match lang {
+            Lang::En => format!("{}d ago", delta / 86_400),
+            Lang::Id => format!("{} hari lalu", delta / 86_400),
+        }
     }
 }
 

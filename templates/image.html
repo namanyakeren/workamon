@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block crumb %}{{ t.nav_images }} / {{ image.id_short }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <a class="back-link" href="/images">{{ t.all_images }}</a>
+    <h1>{{ image.reference }}</h1>
+    <p class="sub">
+      <span class="mono-sub">{{ image.id_short }}</span>
+      <span>{{ image.architecture }} · {{ image.os }}</span>
+    </p>
+  </div>
+  <div class="page-actions">
+    <form method="post" action="/images/remove" data-confirm="{{ t.image_remove_confirm|replace('{reference}', image.reference) }}">
+      <input type="hidden" name="reference" value="{{ image.reference }}">
+      <button type="submit" class="btn btn-danger">{{ t.delete }}</button>
+    </form>
+    <form method="post" action="/images/remove" data-confirm="{{ t.image_force_remove_confirm|replace('{reference}', image.reference) }}">
+      <input type="hidden" name="reference" value="{{ image.reference }}">
+      <input type="hidden" name="force" value="yes">
+      <button type="submit" class="btn btn-danger">{{ t.force_delete }}</button>
+    </form>
+  </div>
+</div>
+
+<div class="stat-grid">
+  <article class="stat">
+    <div class="stat-head"><span class="stat-label">{{ t.image_size }}</span><span class="stat-chip">{{ image.layers }} {{ t.image_layer_count }}</span></div>
+    <div class="stat-value">{{ image.size_text }}</div>
+  </article>
+  <article class="stat">
+    <div class="stat-head"><span class="stat-label">{{ t.image_created }}</span></div>
+    <div class="stat-value stat-value-sm">{{ image.created_text }}</div>
+  </article>
+  <article class="stat">
+    <div class="stat-head"><span class="stat-label">{{ t.image_architecture }}</span></div>
+    <div class="stat-value stat-value-sm">{{ image.architecture }}</div>
+    <div class="stat-foot">{{ image.os }}</div>
+  </article>
+  <article class="stat">
+    <div class="stat-head"><span class="stat-label">{{ t.image_used_by }}</span></div>
+    <div class="stat-value">{{ image.used_by|length }}</div>
+    <div class="stat-foot">{{ t.image_containers }}</div>
+  </article>
+</div>
+
+<div class="grid-main">
+  <section class="panel">
+    <header class="panel-head"><h2>{{ t.info }}</h2></header>
+    <dl class="kv">
+      <dt>{{ t.image_id }}</dt><dd class="mono-sub">{{ image.id }}</dd>
+      <dt>{{ t.image_tags }}</dt><dd>{{ image.tag_text }}</dd>
+      <dt>{{ t.image_author }}</dt><dd>{{ image.author }}</dd>
+      <dt>{{ t.image_entrypoint }}</dt><dd class="mono-sub">{{ image.entrypoint }}</dd>
+      <dt>{{ t.command }}</dt><dd class="mono-sub">{{ image.cmd }}</dd>
+      <dt>{{ t.image_exposed_ports }}</dt>
+      <dd>
+        {% if image.exposed_ports|length > 0 %}
+        <div class="tag-list">{% for port in image.exposed_ports %}<span class="tag">{{ port }}</span>{% endfor %}</div>
+        {% else %}—{% endif %}
+      </dd>
+    </dl>
+    {% if image.digests|length > 0 %}
+    <div class="subhead">{{ t.image_digests }}</div>
+    <ul class="mount-list">
+      {% for digest in image.digests %}<li><span class="mono-sub">{{ digest }}</span></li>{% endfor %}
+    </ul>
+    {% endif %}
+    <p class="hint">{{ t.image_delete_help }}</p>
+  </section>
+
+  <section class="panel">
+    <header class="panel-head">
+      <div><h2>{{ t.image_used_by }}</h2><p class="panel-sub">{{ t.containers }}</p></div>
+      <a class="link" href="/containers">{{ t.manage }}</a>
+    </header>
+    {% if image.used_by|length > 0 %}
+    <ul class="mini-list">
+      {% for container in image.used_by %}
+      <li>
+        <a href="/containers/{{ container.id }}">{{ container.name }}</a>
+        <span class="mini-meta">{{ container.state_text }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="empty">{{ t.image_not_used }}</div>
+    {% endif %}
+  </section>
+</div>
+
+<section class="panel">
+  <header class="panel-head">
+    <div><h2>{{ t.image_env }}</h2><p class="panel-sub">{{ image.env|length }} {{ t.rows }}</p></div>
+  </header>
+  {% if image.env|length > 0 %}
+  <pre class="logs logs-short">{% for entry in image.env %}{{ entry }}
+{% endfor %}</pre>
+  {% else %}
+  <div class="empty">—</div>
+  {% endif %}
+</section>
+{% endblock %}

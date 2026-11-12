@@ -9,9 +9,19 @@ use crate::docker;
 use crate::state::{AppState, LiveSnapshot};
 use crate::util;
 
+const MAX_LIVE_POINTS: usize = 1_800;
+
 pub async fn run(state: AppState) {
-    let sample_interval = Duration::from_secs(state.cfg.sample_secs);
-    let container_every = (state.cfg.container_sample_secs / state.cfg.sample_secs).max(1);
+    // Data live diperbarui paling lambat setiap 5 detik. Sampel database tetap
+    // mengikuti WORKAMON_SAMPLE_SECS agar riwayat tidak membengkak.
+    let live_interval_secs = state.cfg.sample_secs.min(5).max(1);
+    let live_interval = Duration::from_secs(live_interval_secs);
+    // Statistik Docker diperbarui setiap 10 detik agar halaman container tetap
+    // terasa live tanpa membanjiri daemon. Penulisan database memakai interval
+    // terpisah supaya riwayat tetap mengikuti WORKAMON_SAMPLE_SECS.
+    let docker_every = (10 / live_interval_secs).max(1);
+    let db_every = (state.cfg.sample_secs / live_interval_secs).max(1);
+    let container_every = (state.cfg.container_sample_secs / live_interval_secs).max(1);
     let host_root = state.cfg.resolved_host_root();
     let disk_path = host_root.display().to_string();
 
@@ -23,13 +33,22 @@ pub async fn run(state: AppState) {
     system.refresh_cpu_usage();
 
     let mut previous_cpu: HashMap<String, (u64, u64)> = HashMap::new();
+    let mut containers = Vec::new();
+    let mut history: Vec<SystemSample> = Vec::with_capacity(MAX_LIVE_POINTS);
+    let mut docker_ok = state.docker.is_some();
+    let mut docker_error = if state.docker.is_some() {
+        None
+    } else {
+        state.docker_startup_error.clone()
+    };
     let mut last_docker_error: Option<String> = None;
     let mut last_maintenance = Instant::now() - Duration::from_secs(3_600);
     let mut tick: u64 = 0;
 
     info!(
         target: "workamon::monitor",
-        "monitor dimulai: sampel {} detik, riwayat container {} detik, disk {}",
+        "monitor dimulai: data live {} detik, sampel database {} detik, riwayat container {} detik, disk {}",
+        live_interval_secs,
         state.cfg.sample_secs,
         state.cfg.container_sample_secs,
         disk_path
@@ -52,47 +71,49 @@ pub async fn run(state: AppState) {
         let swap_used = system.used_swap().min(swap_total);
         let temp_c = util::read_cpu_temp(&host_root);
         let uptime_secs = System::uptime().unwrap_or(0);
+        let ts = util::now();
 
-        let mut containers = Vec::new();
-        let mut docker_ok = state.docker.is_some();
-        let mut docker_error = None;
-
-        if let Some(docker) = &state.docker {
-            match tokio::time::timeout(
-                Duration::from_secs(20),
-                docker::collect(docker, &mut previous_cpu),
-            )
-            .await
-            {
-                Ok(Ok(list)) => {
-                    containers = list;
-                    docker_ok = true;
-                    if last_docker_error.is_some() {
-                        info!(target: "workamon::docker", "koneksi Docker pulih");
+        let refresh_docker = tick % docker_every == 0;
+        if refresh_docker {
+            if let Some(docker) = &state.docker {
+                match tokio::time::timeout(
+                    Duration::from_secs(20),
+                    docker::collect(docker, &mut previous_cpu),
+                )
+                .await
+                {
+                    Ok(Ok(list)) => {
+                        containers = list;
+                        docker_ok = true;
+                        if last_docker_error.is_some() {
+                            info!(target: "workamon::docker", "koneksi Docker pulih");
+                        }
+                        last_docker_error = None;
+                        docker_error = None;
                     }
-                    last_docker_error = None;
-                }
-                Ok(Err(error)) => {
-                    let message = format!("{error:#}");
-                    docker_ok = false;
-                    if last_docker_error.as_deref() != Some(message.as_str()) {
-                        warn!(target: "workamon::docker", "gagal memantau container: {message}");
+                    Ok(Err(error)) => {
+                        let message = format!("{error:#}");
+                        docker_ok = false;
+                        if last_docker_error.as_deref() != Some(message.as_str()) {
+                            warn!(target: "workamon::docker", "gagal memantau container: {message}");
+                        }
+                        last_docker_error = Some(message.clone());
+                        docker_error = Some(message);
                     }
-                    last_docker_error = Some(message.clone());
-                    docker_error = Some(message);
-                }
-                Err(_) => {
-                    let message = "permintaan Docker melewati batas waktu 20 detik".to_string();
-                    docker_ok = false;
-                    if last_docker_error.as_deref() != Some(message.as_str()) {
-                        warn!(target: "workamon::docker", "{message}");
+                    Err(_) => {
+                        let message = "permintaan Docker melewati batas waktu 20 detik".to_string();
+                        docker_ok = false;
+                        if last_docker_error.as_deref() != Some(message.as_str()) {
+                            warn!(target: "workamon::docker", "{message}");
+                        }
+                        last_docker_error = Some(message.clone());
+                        docker_error = Some(message);
                     }
-                    last_docker_error = Some(message.clone());
-                    docker_error = Some(message);
                 }
+            } else {
+                docker_ok = false;
+                docker_error = state.docker_startup_error.clone();
             }
-        } else {
-            docker_error = state.docker_startup_error.clone();
         }
 
         let running = containers
@@ -100,7 +121,7 @@ pub async fn run(state: AppState) {
             .filter(|container| container.state == "running")
             .count();
         let sample = SystemSample {
-            ts: util::now(),
+            ts,
             cpu_pct: system.global_cpu_usage() as f64,
             mem_used,
             mem_total,
@@ -116,8 +137,16 @@ pub async fn run(state: AppState) {
             containers_total: containers.len() as u32,
         };
 
-        if let Err(error) = state.db.insert_system(&sample) {
-            error!(target: "workamon::db", "gagal menyimpan metrik sistem: {error:#}");
+        history.push(sample.clone());
+        if history.len() > MAX_LIVE_POINTS {
+            let excess = history.len() - MAX_LIVE_POINTS;
+            history.drain(0..excess);
+        }
+
+        if tick % db_every == 0 {
+            if let Err(error) = state.db.insert_system(&sample) {
+                error!(target: "workamon::db", "gagal menyimpan metrik sistem: {error:#}");
+            }
         }
 
         if tick % container_every == 0 {
@@ -125,7 +154,7 @@ pub async fn run(state: AppState) {
                 if container.state != "running" {
                     continue;
                 }
-                let history = ContainerSample {
+                let history_row = ContainerSample {
                     ts: sample.ts,
                     container_id: container.id.clone(),
                     name: container.name.clone(),
@@ -136,7 +165,7 @@ pub async fn run(state: AppState) {
                     net_tx: container.net_tx,
                     state: container.state.clone(),
                 };
-                if let Err(error) = state.db.insert_container(&history) {
+                if let Err(error) = state.db.insert_container(&history_row) {
                     error!(target: "workamon::db", "gagal menyimpan metrik container: {error:#}");
                 }
             }
@@ -153,9 +182,10 @@ pub async fn run(state: AppState) {
             let mut live = state.live.write().await;
             *live = LiveSnapshot {
                 system: Some(sample),
-                containers,
+                history: history.clone(),
+                containers: containers.clone(),
                 docker_ok,
-                docker_error,
+                docker_error: docker_error.clone(),
                 last_update: util::now(),
                 hostname,
                 os,
@@ -207,7 +237,7 @@ pub async fn run(state: AppState) {
 
         tick = tick.wrapping_add(1);
         let elapsed = cycle_start.elapsed();
-        let sleep_for = sample_interval.saturating_sub(elapsed);
+        let sleep_for = live_interval.saturating_sub(elapsed);
         tokio::time::sleep(sleep_for).await;
     }
 }

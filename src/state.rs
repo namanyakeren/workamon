@@ -29,6 +29,7 @@ pub struct AppState {
 #[derive(Debug, Clone, Default)]
 pub struct LiveSnapshot {
     pub system: Option<crate::db::SystemSample>,
+    pub history: Vec<crate::db::SystemSample>,
     pub containers: Vec<ContainerLive>,
     pub docker_ok: bool,
     pub docker_error: Option<String>,

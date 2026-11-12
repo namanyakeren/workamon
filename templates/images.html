@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block crumb %}{{ t.nav_images }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ t.images_title }}</h1>
+    <p class="sub">{{ t.images_sub }}</p>
+  </div>
+  <div class="page-actions">
+    <a class="btn" href="/images">{{ t.reload }}</a>
+    <form method="post" action="/images/prune" data-confirm="{{ t.prune_dangling_confirm }}">
+      <input type="hidden" name="confirm" value="yes">
+      <button type="submit" class="btn"{% if not docker_ok %} disabled{% endif %}>{{ t.prune_dangling }}</button>
+    </form>
+  </div>
+</div>
+
+{% if not docker_ok %}
+<div class="notice notice-warn">
+  <strong>{{ t.docker_unavailable_title }}</strong>
+  {{ docker_error or t.docker_unavailable_body }}
+</div>
+{% endif %}
+
+<div class="grid-main grid-main-even">
+  <section class="panel">
+    <header class="panel-head">
+      <div><h2>{{ t.pull_image }}</h2><p class="panel-sub">{{ t.image_pull_sub }}</p></div>
+    </header>
+    <form class="pull-form" method="post" action="/images/pull">
+      <input type="text" name="reference" placeholder="{{ t.pull_placeholder }}" required autocomplete="off" spellcheck="false">
+      <button type="submit" class="btn btn-primary"{% if not docker_ok %} disabled{% endif %}>{{ t.pull }}</button>
+    </form>
+    <p class="hint">{{ t.image_hint }}</p>
+  </section>
+
+  <section class="panel">
+    <header class="panel-head">
+      <div><h2>{{ t.images_overview }}</h2><p class="panel-sub">{{ t.total }}</p></div>
+    </header>
+    <div class="count-strip">
+      <div><strong>{{ total }}</strong><span>{{ t.image_repository }}</span></div>
+      <div><strong>{{ dangling }}</strong><span>{{ t.image_untagged }}</span></div>
+      <div><strong>{{ total_size_text }}</strong><span>{{ t.image_size }}</span></div>
+    </div>
+  </section>
+</div>
+
+<section class="panel panel-flush">
+  {% if images|length > 0 %}
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>{{ t.image_repository }}</th>
+          <th>{{ t.image_id }}</th>
+          <th class="right">{{ t.image_size }}</th>
+          <th>{{ t.image_created }}</th>
+          <th class="right">{{ t.image_containers }}</th>
+          <th class="right">{{ t.actions }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for image in images %}
+        <tr>
+          <td>
+            <div class="tag-list">
+              {% if image.tags|length > 0 %}
+                {% for tag in image.tags %}<span class="tag">{{ tag }}</span>{% endfor %}
+              {% else %}
+                <span class="tag tag-muted">{{ t.image_untagged }}</span>
+              {% endif %}
+            </div>
+          </td>
+          <td class="mono-sub">{{ image.id_short }}</td>
+          <td class="num right">{{ image.size_text }}</td>
+          <td>
+            <div>{{ image.created_text }}</div>
+            <div class="mono-sub">{{ image.created_ago }}</div>
+          </td>
+          <td class="num right">{{ image.containers }}</td>
+          <td class="right">
+            <div class="actions">
+              <a class="btn btn-sm" href="/images/inspect?ref={{ image.reference|urlencode }}">{{ t.image_inspect }}</a>
+              <form method="post" action="/images/remove" data-confirm="{{ t.image_remove_confirm|replace('{reference}', image.reference) }}">
+                <input type="hidden" name="reference" value="{{ image.reference }}">
+                <button type="submit" class="btn btn-sm btn-danger">{{ t.delete }}</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty">
+    {% if docker_ok %}{{ t.image_no_images }}{% else %}{{ t.image_no_images_docker_unavailable }}{% endif %}
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

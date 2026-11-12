@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="id" data-theme="light">
+<html lang="{{ lang }}" data-theme="light">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -15,7 +15,7 @@
       } catch (error) {}
     })();
   </script>
-  <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="/static/app.css?v={{ version }}">
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
 </head>
 <body class="error-body">
@@ -24,8 +24,12 @@
     <h1>{{ title }}</h1>
     <p>{{ message }}</p>
     <div class="error-actions">
-      <a class="btn btn-primary" href="/">Kembali ke ringkasan</a>
-      <a class="btn" href="/containers">Container</a>
+      <a class="btn btn-primary" href="/">{{ t.error_back_dashboard }}</a>
+      <a class="btn" href="/containers">{{ t.error_container }}</a>
+    </div>
+    <div class="lang-switch error-lang" role="group" aria-label="{{ t.language }}">
+      <a class="lang-btn{% if lang == 'id' %} is-active{% endif %}" href="/language/id" data-lang-switch="id" title="Bahasa Indonesia">ID</a>
+      <a class="lang-btn{% if lang == 'en' %} is-active{% endif %}" href="/language/en" data-lang-switch="en" title="English">EN</a>
     </div>
   </main>
 </body>

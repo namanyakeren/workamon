@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block crumb %}{{ t.nav_containers }} / {{ t.create_container }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <a class="back-link" href="/containers">{{ t.all_containers }}</a>
+    <h1>{{ t.new_container_title }}</h1>
+    <p class="sub">{{ t.new_container_sub }}</p>
+  </div>
+</div>
+
+{% if not docker_ok %}
+<div class="notice notice-warn">
+  <strong>{{ t.docker_unavailable_title }}</strong>
+  {{ docker_error or t.docker_unavailable_body }}
+</div>
+{% endif %}
+
+<form method="post" action="/containers/new" class="panel form-panel">
+  <div class="form-grid">
+    <label class="field">
+      <span>{{ t.container_name }}</span>
+      <input type="text" name="name" value="{{ form.name }}" required maxlength="128" pattern="[A-Za-z0-9][A-Za-z0-9_.-]*" autocomplete="off" autofocus>
+      <small class="field-hint">{{ t.container_name_hint }}</small>
+    </label>
+
+    <label class="field">
+      <span>{{ t.image_required }}</span>
+      <input type="text" name="image" value="{{ form.image }}" required list="image-options" placeholder="nginx:latest" autocomplete="off">
+      <datalist id="image-options">
+        {% for image in images %}<option value="{{ image }}"></option>{% endfor %}
+      </datalist>
+      <small class="field-hint">{{ t.image_hint_create }}</small>
+    </label>
+
+    <label class="field field-full">
+      <span>{{ t.command }}</span>
+      <input type="text" name="command" value="{{ form.command }}" placeholder="/bin/sh -c &quot;sleep 3600&quot;" autocomplete="off">
+      <small class="field-hint">{{ t.command_hint }}</small>
+    </label>
+
+    <label class="field">
+      <span>{{ t.env }}</span>
+      <textarea name="env" rows="5" spellcheck="false" placeholder="TZ=Asia/Jakarta&#10;APP_ENV=production">{{ form.env }}</textarea>
+      <small class="field-hint">{{ t.env_hint }}</small>
+    </label>
+
+    <label class="field">
+      <span>{{ t.ports }}</span>
+      <textarea name="ports" rows="5" spellcheck="false" placeholder="8080:80&#10;53:53/udp">{{ form.ports }}</textarea>
+      <small class="field-hint">{{ t.ports_hint }}</small>
+    </label>
+
+    <label class="field field-full">
+      <span>{{ t.volumes }}</span>
+      <textarea name="volumes" rows="3" spellcheck="false" placeholder="/srv/data:/data:ro">{{ form.volumes }}</textarea>
+      <small class="field-hint">{{ t.volumes_hint }}</small>
+    </label>
+
+    <label class="field">
+      <span>{{ t.restart_policy }}</span>
+      <select name="restart">
+        <option value="no"{% if form.restart == "no" %} selected{% endif %}>{{ t.restart_no }}</option>
+        <option value="always"{% if form.restart == "always" %} selected{% endif %}>{{ t.restart_always }}</option>
+        <option value="unless-stopped"{% if form.restart == "unless-stopped" %} selected{% endif %}>{{ t.restart_unless_stopped }}</option>
+        <option value="on-failure"{% if form.restart == "on-failure" %} selected{% endif %}>{{ t.restart_on_failure }}</option>
+      </select>
+    </label>
+
+    <label class="field field-check">
+      <span>{{ t.start }}</span>
+      <span class="check-row">
+        <input type="checkbox" name="start" value="yes"{% if form.start %} checked{% endif %}>
+        <span>{{ t.start_now }}</span>
+      </span>
+    </label>
+  </div>
+
+  <div class="form-actions">
+    <a class="btn btn-quiet" href="/containers">{{ t.cancel }}</a>
+    <button type="submit" class="btn btn-primary"{% if not docker_ok %} disabled{% endif %}>{{ t.create }}</button>
+  </div>
+  <p class="hint">{{ t.create_hint }}</p>
+</form>
+{% endblock %}

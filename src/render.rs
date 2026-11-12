@@ -2,6 +2,7 @@ use anyhow::Result;
 use minijinja::value::Serde;
 use minijinja::{Environment, Value};
 
+use crate::i18n::{self, Lang};
 use crate::util;
 
 pub struct Renderer {
@@ -16,6 +17,9 @@ impl Renderer {
         env.add_template("dashboard.html", include_str!("../templates/dashboard.html"))?;
         env.add_template("containers.html", include_str!("../templates/containers.html"))?;
         env.add_template("container.html", include_str!("../templates/container.html"))?;
+        env.add_template("container_new.html", include_str!("../templates/container_new.html"))?;
+        env.add_template("images.html", include_str!("../templates/images.html"))?;
+        env.add_template("image.html", include_str!("../templates/image.html"))?;
         env.add_template("metrics.html", include_str!("../templates/metrics.html"))?;
         env.add_template("logs.html", include_str!("../templates/logs.html"))?;
         env.add_template("maintenance.html", include_str!("../templates/maintenance.html"))?;
@@ -37,6 +41,7 @@ pub fn line_chart(
     y_max: Option<f64>,
     unit: &str,
     color_class: &str,
+    lang: Lang,
 ) -> String {
     let points: Vec<(i64, f64)> = points
         .iter()
@@ -44,7 +49,10 @@ pub fn line_chart(
         .filter(|(_, value)| value.is_finite())
         .collect();
     if points.is_empty() {
-        return "<div class=\"chart-empty\">Belum ada data pada rentang ini.</div>".into();
+        return format!(
+            "<div class=\"chart-empty\">{}</div>",
+            i18n::t(lang, "no_samples_range")
+        );
     }
 
     let pad_left = 46.0;
@@ -123,9 +131,10 @@ pub fn line_chart(
     };
     let last = points.last().copied().unwrap_or((t0, lo));
     let last_label = axis_label(last.1, unit);
+    let chart_aria = if lang == Lang::En { "chart" } else { "grafik" };
 
     format!(
-        "<svg class=\"chart {color_class}\" viewBox=\"0 0 {width} {height}\" role=\"img\" aria-label=\"grafik\">\
+        "<svg class=\"chart {color_class}\" viewBox=\"0 0 {width} {height}\" role=\"img\" aria-label=\"{chart_aria}\">\
          <g class=\"chart-grid\">{grid}</g>\
          <path class=\"chart-area\" d=\"{area}\"/>\
          <path class=\"chart-line\" d=\"{path}\"/>\
@@ -176,5 +185,54 @@ fn axis_label(value: f64, unit: &str) -> String {
         "percent" => format!("{value:.0}%"),
         "bytes" => util::fmt_bytes(value.max(0.0) as u64),
         _ => format!("{value:.0}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn renders_image_detail_template() {
+        let renderer = Renderer::new().expect("template harus valid");
+        let context = json!({
+            "active": "images",
+            "page_title": "Images",
+            "username": "admin",
+            "version": "0.2.0",
+            "db_max_mb": 10,
+            "default_creds": false,
+            "lang": "en",
+            "lang_other": "id",
+            "lang_other_short": "ID",
+            "t": i18n::dict(Lang::En),
+            "docker_ok": true,
+            "docker_error": null,
+            "flash": null,
+            "reference": "nginx:latest",
+            "image": {
+                "id": "sha256:abc",
+                "id_short": "abc",
+                "reference": "nginx:latest",
+                "tags": ["nginx:latest"],
+                "tag_text": "nginx:latest",
+                "digests": ["nginx@sha256:def"],
+                "size_text": "1 MB",
+                "created_text": "2026-01-01 00:00:00",
+                "architecture": "amd64",
+                "os": "linux",
+                "author": "nginx",
+                "entrypoint": "/docker-entrypoint.sh",
+                "cmd": "nginx -g 'daemon off;'",
+                "env": ["PATH=/usr/bin"],
+                "exposed_ports": ["80/tcp"],
+                "layers": 3,
+                "used_by": [{"id": "abc123", "name": "web", "state_text": "running"}]
+            }
+        });
+        let html = renderer.render("image.html", &context).expect("render");
+        assert!(html.contains("nginx:latest"));
+        assert!(html.contains("web"));
     }
 }

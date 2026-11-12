@@ -1,6 +1,7 @@
 mod config;
 mod db;
 mod docker;
+mod i18n;
 mod logging;
 mod monitor;
 mod render;

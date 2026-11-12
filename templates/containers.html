@@ -1,20 +1,21 @@
 {% extends "base.html" %}
-{% block crumb %}Container{% endblock %}
+{% block crumb %}{{ t.nav_containers }}{% endblock %}
 {% block content %}
 <div class="page-head">
   <div>
-    <h1>Container</h1>
-    <p class="sub">{{ counts.total }} terdeteksi · {{ counts.running }} berjalan · {{ counts.unhealthy }} bermasalah</p>
+    <h1>{{ t.containers_title }}</h1>
+    <p class="sub">{{ counts.total }} {{ t.containers_detected_after }} · {{ counts.running }} {{ t.running }} · {{ counts.unhealthy }} {{ t.unhealthy }}</p>
   </div>
   <div class="page-actions">
-    <a class="btn" href="/containers">Muat ulang</a>
+    <a class="btn" href="/containers">{{ t.reload }}</a>
+    <a class="btn btn-primary" href="/containers/new">+ {{ t.create_container }}</a>
   </div>
 </div>
 
 {% if not docker_ok %}
 <div class="notice notice-warn">
-  <strong>Docker tidak tersedia.</strong>
-  {{ docker_error or "Pastikan socket Docker terpasang dan dapat diakses." }}
+  <strong>{{ t.docker_unavailable_title }}</strong>
+  {{ docker_error or t.docker_unavailable_body }}
 </div>
 {% endif %}
 
@@ -24,14 +25,14 @@
     <table class="table">
       <thead>
         <tr>
-          <th>Nama</th>
-          <th>Status</th>
-          <th>Kesehatan</th>
-          <th>Image</th>
-          <th class="right">CPU</th>
-          <th>Memori</th>
-          <th>Port</th>
-          <th class="right">Aksi</th>
+          <th>{{ t.name }}</th>
+          <th>{{ t.status }}</th>
+          <th>{{ t.health }}</th>
+          <th>{{ t.image }}</th>
+          <th class="right">{{ t.cpu }}</th>
+          <th>{{ t.memory }}</th>
+          <th>{{ t.port }}</th>
+          <th class="right">{{ t.actions }}</th>
         </tr>
       </thead>
       <tbody>
@@ -46,7 +47,7 @@
             {% if c.status %}<div class="mono-sub">{{ c.status }}</div>{% endif %}
           </td>
           <td>
-            {% if c.health != "—" %}
+            {% if c.health_class != "none" %}
             <span class="health health-{{ c.health_class }}">{{ c.health }}</span>
             {% else %}
             <span class="muted">—</span>
@@ -62,17 +63,20 @@
           <td class="right">
             <div class="actions">
               {% if c.running %}
-              <form method="post" action="/containers/{{ c.id }}/restart?back=list" data-confirm="Restart container {{ c.name }}?">
-                <button type="submit" class="btn btn-sm">Mulai ulang</button>
+              <form method="post" action="/containers/{{ c.id }}/restart?back=list" data-confirm="{{ t.restart }} {{ c.name }}?">
+                <button type="submit" class="btn btn-sm">{{ t.restart }}</button>
               </form>
-              <form method="post" action="/containers/{{ c.id }}/stop?back=list" data-confirm="Hentikan container {{ c.name }}?">
-                <button type="submit" class="btn btn-sm btn-danger">Hentikan</button>
+              <form method="post" action="/containers/{{ c.id }}/stop?back=list" data-confirm="{{ t.stop }} {{ c.name }}?">
+                <button type="submit" class="btn btn-sm btn-danger">{{ t.stop }}</button>
               </form>
               {% else %}
               <form method="post" action="/containers/{{ c.id }}/start?back=list">
-                <button type="submit" class="btn btn-sm btn-primary">Jalankan</button>
+                <button type="submit" class="btn btn-sm btn-primary">{{ t.start }}</button>
               </form>
               {% endif %}
+              <form method="post" action="/containers/{{ c.id }}/delete?back=list" data-confirm="{{ t.delete_container_confirm|replace('{name}', c.name) }}">
+                <button type="submit" class="btn btn-sm btn-danger">{{ t.delete }}</button>
+              </form>
             </div>
           </td>
         </tr>
@@ -82,13 +86,12 @@
   </div>
   {% else %}
   <div class="empty">
-    {% if docker_ok %}Tidak ada container.{% else %}Daftar container tidak dapat dibaca.{% endif %}
+    {% if docker_ok %}{{ t.no_containers_title }}{% else %}{{ t.containers_unreadable }}{% endif %}
   </div>
   {% endif %}
 </section>
 
 <p class="hint">
-  Statistik live diperbarui setiap {{ sample_secs }} detik. Riwayat container disimpan setiap {{ container_sample_secs }} detik.
-  Container yang berhenti tidak memiliki data CPU atau memori.
+  {{ t.containers_hint_before }} {{ sample_secs }} {{ t.containers_hint_mid }} {{ container_sample_secs }} {{ t.containers_hint_after }}
 </p>
 {% endblock %}

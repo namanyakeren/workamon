@@ -1,79 +1,87 @@
 {% extends "base.html" %}
-{% block crumb %}Metrik{% endblock %}
+{% block crumb %}{{ t.nav_metrics }}{% endblock %}
 {% block content %}
 <div class="page-head">
   <div>
-    <h1>Metrik</h1>
-    <p class="sub">Riwayat pemakaian CPU, memori, penyimpanan, dan container.</p>
+    <h1>{{ t.metrics_title }}{% if live %} <span class="live-pill">{{ t.live_badge }}</span>{% endif %}</h1>
+    <p class="sub">{{ t.metrics_sub }}</p>
   </div>
-  <div class="range-tabs" role="group" aria-label="Rentang waktu">
+  <div class="range-tabs" role="group" aria-label="{{ t.range_aria }}">
     {% for range in ranges %}
     <a class="range-tab{% if range.active %} is-active{% endif %}" href="/metrics?range={{ range.key }}">{{ range.label }}</a>
     {% endfor %}
   </div>
 </div>
 
+{% if live %}
+<div class="notice notice-live" data-live-metrics-note>
+  <span class="dot dot-ok"></span>
+  <span>{{ t.summary_live_updated }}</span>
+  <span class="page-meta" data-live-summary="last_update_text">—</span>
+</div>
+{% endif %}
+
 <div class="stat-grid stat-grid-4">
   <article class="stat">
-    <div class="stat-head"><span class="stat-label">CPU rata-rata</span><span class="stat-chip">maks {{ summary.cpu_max_text }}</span></div>
-    <div class="stat-value">{{ summary.cpu_avg_text }}</div>
-    <div class="stat-foot">{{ summary.sample_count }} titik dalam {{ summary.range_label }}</div>
+    <div class="stat-head"><span class="stat-label">{{ t.cpu_avg }}</span><span class="stat-chip">{{ t.max }} <span data-live-summary="cpu_max_text">{{ summary.cpu_max_text }}</span></span></div>
+    <div class="stat-value" data-live-summary="cpu_avg_text">{{ summary.cpu_avg_text }}</div>
+    <div class="stat-foot"><span data-live-summary="sample_count">{{ summary.sample_count }}</span> {{ t.points_in_range_before }} {{ summary.range_label }}</div>
   </article>
   <article class="stat">
-    <div class="stat-head"><span class="stat-label">RAM rata-rata</span><span class="stat-chip">maks {{ summary.mem_max_text }}</span></div>
-    <div class="stat-value">{{ summary.mem_avg_text }}</div>
-    <div class="stat-foot">Dihitung dari used / total</div>
+    <div class="stat-head"><span class="stat-label">{{ t.ram_avg }}</span><span class="stat-chip">{{ t.max }} <span data-live-summary="mem_max_text">{{ summary.mem_max_text }}</span></span></div>
+    <div class="stat-value" data-live-summary="mem_avg_text">{{ summary.mem_avg_text }}</div>
+    <div class="stat-foot">{{ t.mem_calc_foot }}</div>
   </article>
   <article class="stat">
-    <div class="stat-head"><span class="stat-label">Disk sekarang</span><span class="stat-chip">{{ summary.disk_now_pct }}</span></div>
-    <div class="stat-value stat-value-sm">{{ summary.disk_now_text }}</div>
+    <div class="stat-head"><span class="stat-label">{{ t.disk_now }}</span><span class="stat-chip" data-live-summary="disk_now_pct">{{ summary.disk_now_pct }}</span></div>
+    <div class="stat-value stat-value-sm" data-live-summary="disk_now_text">{{ summary.disk_now_text }}</div>
     <div class="stat-foot">{{ summary.disk_path }}</div>
   </article>
   <article class="stat">
-    <div class="stat-head"><span class="stat-label">Container</span><span class="stat-chip">saat ini</span></div>
-    <div class="stat-value">{{ summary.containers_now }}</div>
-    <div class="stat-foot">{{ summary.containers_running_now }} berjalan</div>
+    <div class="stat-head"><span class="stat-label">{{ t.containers_now }}</span><span class="stat-chip">{{ t.current }}</span></div>
+    <div class="stat-value" data-live-summary="containers_now">{{ summary.containers_now }}</div>
+    <div class="stat-foot">{{ summary.containers_running_now }} {{ t.running }}</div>
   </article>
 </div>
 
 <section class="panel">
   <header class="panel-head">
-    <div><h2>CPU</h2><p class="panel-sub">Persentase pemakaian seluruh core</p></div>
+    <div><h2>{{ t.cpu }}</h2><p class="panel-sub">{{ t.cpu_chart_sub }}</p></div>
   </header>
-  {{ cpu_chart|safe }}
+  <div class="chart-live"{% if live %} data-live-chart="cpu" data-live-window="{{ live_window }}" data-live-unit="percent"{% endif %}>{{ cpu_chart|safe }}</div>
 </section>
 
 <section class="panel">
   <header class="panel-head">
-    <div><h2>Memori</h2><p class="panel-sub">Persentase RAM terpakai</p></div>
+    <div><h2>{{ t.memory }}</h2><p class="panel-sub">{{ t.mem_chart_sub }}</p></div>
   </header>
-  {{ mem_chart|safe }}
+  <div class="chart-live"{% if live %} data-live-chart="mem" data-live-window="{{ live_window }}" data-live-unit="percent"{% endif %}>{{ mem_chart|safe }}</div>
 </section>
 
 <section class="panel">
   <header class="panel-head">
-    <div><h2>Penyimpanan</h2><p class="panel-sub">Persentase filesystem host</p></div>
+    <div><h2>{{ t.storage }}</h2><p class="panel-sub">{{ t.disk_chart_sub }}</p></div>
   </header>
-  {{ disk_chart|safe }}
+  <div class="chart-live"{% if live %} data-live-chart="disk" data-live-window="{{ live_window }}" data-live-unit="percent"{% endif %}>{{ disk_chart|safe }}</div>
 </section>
 
 <section class="panel">
   <header class="panel-head">
-    <div><h2>Container</h2><p class="panel-sub">Jumlah container berjalan</p></div>
+    <div><h2>{{ t.containers }}</h2><p class="panel-sub">{{ t.containers_chart_sub }}</p></div>
   </header>
-  {{ containers_chart|safe }}
+  <div class="chart-live"{% if live %} data-live-chart="containers" data-live-window="{{ live_window }}" data-live-unit="count"{% endif %}>{{ containers_chart|safe }}</div>
 </section>
 
 <section class="panel">
   <header class="panel-head">
-    <div><h2>Sampel terbaru</h2><p class="panel-sub">50 data terakhir</p></div>
-    <span class="hint">Database {{ db.size_text }} / {{ db.max_text }}</span>
+    <div><h2>{{ t.latest_samples }}</h2><p class="panel-sub">{{ t.last_50 }}</p></div>
+    <span class="hint">{{ t.database_label }} {{ db.size_text }} / {{ db.max_text }}</span>
   </header>
   {% if rows|length > 0 %}
   <div class="table-wrap">
     <table class="table table-compact">
       <thead>
-        <tr><th>Waktu</th><th class="right">CPU</th><th class="right">RAM</th><th class="right">Disk</th><th class="right">Load 1m</th><th class="right">Suhu</th><th class="right">Container</th></tr>
+        <tr><th>{{ t.time }}</th><th class="right">{{ t.cpu }}</th><th class="right">{{ t.ram }}</th><th class="right">{{ t.disk }}</th><th class="right">{{ t.load_1m }}</th><th class="right">{{ t.temperature }}</th><th class="right">{{ t.containers }}</th></tr>
       </thead>
       <tbody>
         {% for row in rows %}
@@ -91,7 +99,7 @@
     </table>
   </div>
   {% else %}
-  <div class="empty">Belum ada sampel pada rentang ini.</div>
+  <div class="empty">{{ t.no_samples_range }}</div>
   {% endif %}
 </section>
 {% endblock %}

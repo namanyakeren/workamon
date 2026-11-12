@@ -1,34 +1,34 @@
 {% extends "base.html" %}
-{% block crumb %}Log{% endblock %}
+{% block crumb %}{{ t.nav_logs }}{% endblock %}
 {% block content %}
 <div class="page-head">
   <div>
-    <h1>Log aplikasi</h1>
-    <p class="sub">Bug, error fungsi, audit aksi, dan kejadian penting. {{ total }} entri tersimpan.</p>
+    <h1>{{ t.logs_title }}</h1>
+    <p class="sub">{{ t.logs_sub_before }} {{ total }} {{ t.logs_sub_after }}</p>
   </div>
   <div class="page-actions">
-    <a class="btn" href="/maintenance">Kelola database</a>
+    <a class="btn" href="/maintenance">{{ t.manage_db }}</a>
   </div>
 </div>
 
 <section class="panel">
   <form class="filter-bar" method="get" action="/logs">
     <label class="field field-inline">
-      <span>Level</span>
+      <span>{{ t.level }}</span>
       <select name="level">
-        <option value="ALL"{% if level == "ALL" %} selected{% endif %}>Semua</option>
+        <option value="ALL"{% if level == "ALL" %} selected{% endif %}>{{ t.all }}</option>
         <option value="INFO"{% if level == "INFO" %} selected{% endif %}>INFO</option>
         <option value="WARN"{% if level == "WARN" %} selected{% endif %}>WARN</option>
         <option value="ERROR"{% if level == "ERROR" %} selected{% endif %}>ERROR</option>
       </select>
     </label>
     <label class="field field-grow">
-      <span>Cari pesan atau target</span>
-      <input type="search" name="q" value="{{ query }}" placeholder="contoh: docker, timeout, login">
+      <span>{{ t.search_label }}</span>
+      <input type="search" name="q" value="{{ query }}" placeholder="{{ t.search_placeholder }}">
     </label>
     <div class="filter-actions">
-      <button type="submit" class="btn btn-primary">Terapkan</button>
-      <a class="btn btn-quiet" href="/logs">Reset</a>
+      <button type="submit" class="btn btn-primary">{{ t.apply }}</button>
+      <a class="btn btn-quiet" href="/logs">{{ t.reset }}</a>
     </div>
   </form>
 </section>
@@ -37,7 +37,7 @@
   {% if rows|length > 0 %}
   <div class="table-wrap">
     <table class="table table-logs">
-      <thead><tr><th>Waktu</th><th>Level</th><th>Target</th><th>Pesan</th></tr></thead>
+      <thead><tr><th>{{ t.time }}</th><th>{{ t.level }}</th><th>{{ t.target }}</th><th>{{ t.message }}</th></tr></thead>
       <tbody>
         {% for log in rows %}
         <tr class="log-row log-row-{{ log.level_class }}">
@@ -51,15 +51,15 @@
     </table>
   </div>
   {% else %}
-  <div class="empty">Tidak ada log yang cocok dengan filter.</div>
+  <div class="empty">{{ t.no_matching_logs }}</div>
   {% endif %}
 </section>
 
 <div class="pagination">
-  <span>Halaman {{ page }} dari {{ total_pages }}</span>
+  <span>{{ t.page_of }} {{ page }} {{ t.of }} {{ total_pages }}</span>
   <div class="pagination-actions">
-    {% if prev_link %}<a class="btn btn-sm" href="{{ prev_link }}">← Sebelumnya</a>{% endif %}
-    {% if next_link %}<a class="btn btn-sm" href="{{ next_link }}">Berikutnya →</a>{% endif %}
+    {% if prev_link %}<a class="btn btn-sm" href="{{ prev_link }}">{{ t.previous }}</a>{% endif %}
+    {% if next_link %}<a class="btn btn-sm" href="{{ next_link }}">{{ t.next }}</a>{% endif %}
   </div>
 </div>
 {% endblock %}
