@@ -36,6 +36,14 @@ docker compose up -d --build
 
 Buka `http://IP-SERVER:8080`.
 
+Untuk memakai port host lain, ubah `WORKAMON_PORT` di `.env` (misalnya
+`WORKAMON_PORT=9090`), lalu jalankan ulang `docker compose up -d`. Bisa juga
+langsung dari shell:
+
+```bash
+WORKAMON_PORT=9090 docker compose up -d --build
+```
+
 Kredensial default adalah `admin` / `workamon`. **Ganti password sebelum
 membuka aplikasi ke jaringan.**
 
