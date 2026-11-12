@@ -6,21 +6,21 @@
     <a class="back-link" href="/containers">← Semua container</a>
     <h1>{{ c.name or info.name }}</h1>
     <p class="sub">
-      <span class="status status-{{ c.state_class }}"><i></i>{{ c.state }}</span>
+      <span class="status status-{{ c.state_class }}"><i></i>{{ c.state_text }}</span>
       <span class="mono-sub">{{ info.id_short }}</span>
     </p>
   </div>
   <div class="page-actions">
     {% if c.running %}
     <form method="post" action="/containers/{{ container_id }}/restart?back=detail" data-confirm="Restart container {{ c.name }}?">
-      <button type="submit" class="btn">Restart</button>
+      <button type="submit" class="btn">Mulai ulang</button>
     </form>
     <form method="post" action="/containers/{{ container_id }}/stop?back=detail" data-confirm="Hentikan container {{ c.name }}?">
-      <button type="submit" class="btn btn-danger">Stop</button>
+      <button type="submit" class="btn btn-danger">Hentikan</button>
     </form>
     {% else %}
     <form method="post" action="/containers/{{ container_id }}/start?back=detail">
-      <button type="submit" class="btn btn-primary">Start</button>
+      <button type="submit" class="btn btn-primary">Jalankan</button>
     </form>
     {% endif %}
   </div>

@@ -153,6 +153,43 @@ pub fn disk_usage(path: &Path) -> (u64, u64) {
     (total.saturating_sub(free), total)
 }
 
+/// Membaca hostname host. Di dalam container, `/etc/hostname` berisi nama
+/// container, jadi root host yang dipasang di `/host` dicoba lebih dulu.
+pub fn read_hostname(host_root: &Path) -> Option<String> {
+    let candidates = [host_root.join("etc/hostname"), Path::new("/etc/hostname").to_path_buf()];
+    for candidate in candidates {
+        if let Ok(raw) = std::fs::read_to_string(&candidate) {
+            if let Some(name) = raw.lines().next().map(str::trim).filter(|name| !name.is_empty()) {
+                return Some(name.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Membaca `PRETTY_NAME` dari os-release host.
+pub fn read_os_pretty_name(host_root: &Path) -> Option<String> {
+    let candidates = [
+        host_root.join("etc/os-release"),
+        host_root.join("usr/lib/os-release"),
+        Path::new("/etc/os-release").to_path_buf(),
+    ];
+    for candidate in candidates {
+        let Ok(raw) = std::fs::read_to_string(&candidate) else {
+            continue;
+        };
+        for line in raw.lines() {
+            if let Some(value) = line.strip_prefix("PRETTY_NAME=") {
+                let value = value.trim().trim_matches('"').trim();
+                if !value.is_empty() {
+                    return Some(value.to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
 pub fn read_cpu_temp(host_root: &Path) -> Option<f64> {
     let candidates = [
         host_root.join("sys/class/thermal/thermal_zone0/temp"),

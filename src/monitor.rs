@@ -142,8 +142,12 @@ pub async fn run(state: AppState) {
             }
         }
 
-        let hostname = System::host_name().unwrap_or_else(|_| "unknown".into());
-        let os = System::long_os_version().unwrap_or_else(|_| "Linux".into());
+        let hostname = util::read_hostname(&host_root)
+            .or_else(|| System::host_name().ok())
+            .unwrap_or_else(|| "unknown".into());
+        let os = util::read_os_pretty_name(&host_root)
+            .or_else(|| System::long_os_version().ok())
+            .unwrap_or_else(|| "Linux".into());
         let cpu_count = system.cpus().len();
         {
             let mut live = state.live.write().await;

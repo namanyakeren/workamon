@@ -100,32 +100,32 @@
   <div class="empty">Data pemakaian Docker tidak tersedia.</div>
   {% endif %}
 
-  <div class="subhead">Prune</div>
+  <div class="subhead">Pembersihan</div>
   <div class="action-grid">
     <form class="action-card" method="post" action="/maintenance/prune/containers" data-confirm="Hapus semua container yang berhenti?">
       <div><strong>Container berhenti</strong><p>Menghapus container dengan status exited atau created.</p></div>
       <input type="hidden" name="confirm" value="yes">
-      <button type="submit" class="btn btn-sm">Prune</button>
+      <button type="submit" class="btn btn-sm">Bersihkan</button>
     </form>
     <form class="action-card" method="post" action="/maintenance/prune/images" data-confirm="Hapus image dangling?">
       <div><strong>Image dangling</strong><p>Menghapus image tanpa tag yang tidak dipakai container.</p></div>
       <input type="hidden" name="confirm" value="yes">
-      <button type="submit" class="btn btn-sm">Prune</button>
+      <button type="submit" class="btn btn-sm">Bersihkan</button>
     </form>
     <form class="action-card" method="post" action="/maintenance/prune/build" data-confirm="Hapus seluruh build cache?">
       <div><strong>Build cache</strong><p>Menghapus cache build Docker yang tidak aktif.</p></div>
       <input type="hidden" name="confirm" value="yes">
-      <button type="submit" class="btn btn-sm">Prune</button>
+      <button type="submit" class="btn btn-sm">Bersihkan</button>
     </form>
     <form class="action-card" method="post" action="/maintenance/prune/networks" data-confirm="Hapus network yang tidak dipakai?">
       <div><strong>Network</strong><p>Menghapus network Docker yang tidak terhubung ke container.</p></div>
       <input type="hidden" name="confirm" value="yes">
-      <button type="submit" class="btn btn-sm">Prune</button>
+      <button type="submit" class="btn btn-sm">Bersihkan</button>
     </form>
     <form class="action-card action-card-danger" method="post" action="/maintenance/prune/volumes" data-confirm="Hapus volume yang tidak dipakai? Data di dalamnya akan hilang.">
       <div><strong>Volume tidak terpakai</strong><p>Berbahaya: data volume yang tidak lagi dipakai container akan dihapus permanen.</p></div>
       <input type="hidden" name="confirm" value="yes">
-      <button type="submit" class="btn btn-sm btn-danger">Prune volume</button>
+      <button type="submit" class="btn btn-sm btn-danger">Bersihkan volume</button>
     </form>
   </div>
   {% endif %}

@@ -1151,10 +1151,22 @@ fn container_view(container: &ContainerLive) -> Value {
     } else {
         0.0
     };
-    let health_text = container
-        .health
-        .clone()
-        .unwrap_or_else(|| "—".to_string());
+    let state_text = match container.state.as_str() {
+        "running" => "berjalan",
+        "exited" => "berhenti",
+        "created" => "dibuat",
+        "restarting" => "restart",
+        "paused" => "jeda",
+        "dead" => "mati",
+        "removing" => "dihapus",
+        other => other,
+    };
+    let health_text = match container.health.as_deref() {
+        Some("healthy") => "sehat",
+        Some("unhealthy") => "bermasalah",
+        Some("starting") => "memulai",
+        _ => "—",
+    };
 
     json!({
         "id": container.id.clone(),
@@ -1163,6 +1175,7 @@ fn container_view(container: &ContainerLive) -> Value {
         "image": container.image.clone(),
         "image_short": util::truncate_chars(&container.image, 44),
         "state": container.state.clone(),
+        "state_text": state_text,
         "state_class": state_class,
         "status": container.status.clone(),
         "health": health_text,
@@ -1237,6 +1250,12 @@ fn inspect_view(
         Some("unhealthy") => "danger",
         Some("starting") => "warn",
         _ => "none",
+    };
+    let health_text = match health.as_deref() {
+        Some("healthy") => "sehat",
+        Some("unhealthy") => "bermasalah",
+        Some("starting") => "memulai",
+        _ => "—",
     };
 
     let mut command_parts = Vec::new();
@@ -1316,7 +1335,7 @@ fn inspect_view(
         "created_text": fmt_docker_date(&inspect.created),
         "started_text": fmt_docker_date(&started),
         "restart_count": inspect.restart_count.unwrap_or(0),
-        "health": health.unwrap_or_else(|| "—".into()),
+        "health": health_text,
         "health_class": health_class,
         "ports": ports,
         "networks": networks,

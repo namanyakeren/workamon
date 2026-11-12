@@ -4,7 +4,7 @@
 <div class="page-head">
   <div>
     <h1>Container</h1>
-    <p class="sub">{{ counts.total }} terdeteksi · {{ counts.running }} berjalan · {{ counts.unhealthy }} unhealthy</p>
+    <p class="sub">{{ counts.total }} terdeteksi · {{ counts.running }} berjalan · {{ counts.unhealthy }} bermasalah</p>
   </div>
   <div class="page-actions">
     <a class="btn" href="/containers">Muat ulang</a>
@@ -42,7 +42,7 @@
             <div class="mono-sub">{{ c.id_short }}</div>
           </td>
           <td>
-            <span class="status status-{{ c.state_class }}"><i></i>{{ c.state }}</span>
+            <span class="status status-{{ c.state_class }}"><i></i>{{ c.state_text }}</span>
             {% if c.status %}<div class="mono-sub">{{ c.status }}</div>{% endif %}
           </td>
           <td>
@@ -63,14 +63,14 @@
             <div class="actions">
               {% if c.running %}
               <form method="post" action="/containers/{{ c.id }}/restart?back=list" data-confirm="Restart container {{ c.name }}?">
-                <button type="submit" class="btn btn-sm">Restart</button>
+                <button type="submit" class="btn btn-sm">Mulai ulang</button>
               </form>
               <form method="post" action="/containers/{{ c.id }}/stop?back=list" data-confirm="Hentikan container {{ c.name }}?">
-                <button type="submit" class="btn btn-sm btn-danger">Stop</button>
+                <button type="submit" class="btn btn-sm btn-danger">Hentikan</button>
               </form>
               {% else %}
               <form method="post" action="/containers/{{ c.id }}/start?back=list">
-                <button type="submit" class="btn btn-sm btn-primary">Start</button>
+                <button type="submit" class="btn btn-sm btn-primary">Jalankan</button>
               </form>
               {% endif %}
             </div>
