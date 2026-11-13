@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block crumb %}{{ t.nav_network }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ t.network_title }}</h1>
+    <p class="sub">{{ t.network_sub }}</p>
+  </div>
+  <div class="page-actions">
+    <a class="btn" href="/network">{{ t.reload }}</a>
+  </div>
+</div>
+
+{% if network_error %}
+<div class="notice notice-warn">
+  <strong>{{ t.network_unreadable_title }}</strong>
+  {{ network_error }}
+</div>
+{% endif %}
+
+<div class="stat-grid">
+  <article class="stat">
+    <div class="stat-head"><span class="stat-label">{{ t.network_rx_rate }}</span><span class="stat-chip">live</span></div>
+    <div class="stat-value" data-net-summary="rx_rate_text">{{ network.rx_rate_text }}</div>
+    <div class="stat-foot">{{ t.network_total }} {{ network.rx_total_text }}</div>
+  </article>
+  <article class="stat">
+    <div class="stat-head"><span class="stat-label">{{ t.network_tx_rate }}</span><span class="stat-chip">live</span></div>
+    <div class="stat-value" data-net-summary="tx_rate_text">{{ network.tx_rate_text }}</div>
+    <div class="stat-foot">{{ t.network_total }} {{ network.tx_total_text }}</div>
+  </article>
+  <article class="stat">
+    <div class="stat-head"><span class="stat-label">{{ t.network_gateway }}</span><span class="stat-chip">{{ t.network_route }}</span></div>
+    <div class="stat-value stat-value-sm mono-sub" data-net-summary="default_gateway">{{ network.default_gateway }}</div>
+    <div class="stat-foot">{{ t.network_gateway_foot }}</div>
+  </article>
+  <article class="stat">
+    <div class="stat-head"><span class="stat-label">DNS</span><span class="stat-chip">{{ t.network_dns }}</span></div>
+    <div class="stat-value stat-value-sm mono-sub" data-net-summary="dns_text">{{ network.dns_text }}</div>
+    <div class="stat-foot">{{ t.network_dns_foot }}</div>
+  </article>
+</div>
+
+<div class="grid-main">
+  <section class="panel">
+    <header class="panel-head">
+      <div>
+        <h2>{{ t.network_history }}</h2>
+        <p class="panel-sub">{{ t.network_history_sub }}</p>
+      </div>
+    </header>
+    <div class="chart-cell">
+      <div class="chart-caption"><span>{{ t.network_rx_rate }}</span><strong data-net-summary="rx_rate_text">{{ network.rx_rate_text }}</strong></div>
+      <div data-net-chart="rx_rate">{{ rx_chart|safe }}</div>
+    </div>
+    <div class="chart-cell">
+      <div class="chart-caption"><span>{{ t.network_tx_rate }}</span><strong data-net-summary="tx_rate_text">{{ network.tx_rate_text }}</strong></div>
+      <div data-net-chart="tx_rate">{{ tx_chart|safe }}</div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <header class="panel-head">
+      <div>
+        <h2>{{ t.cloudflare_title }}</h2>
+        <p class="panel-sub">{{ t.cloudflare_sub }}</p>
+      </div>
+    </header>
+    {% if cloudflare|length > 0 %}
+    <div class="cloudflare-list">
+      {% for item in cloudflare %}
+      <div class="cloudflare-item" data-cloudflare-key="{{ item.name }}">
+        <div>
+          <div class="strong">{{ item.name }}</div>
+          <div class="mono-sub">{{ item.kind }} · {{ item.description }}</div>
+        </div>
+        <div class="cloudflare-meta">
+          <span class="status status-{{ item.state_class }}"><i></i><span data-cf-field="state">{{ item.state }}</span></span>
+          <span class="mono-sub" data-cf-field="cpu_text">{{ item.cpu_text }} CPU</span>
+          <span class="mono-sub" data-cf-field="mem_text">{{ item.mem_text }}</span>
+          <span class="mono-sub" data-cf-field="net_text">{{ item.net_text }}</span>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty">{{ t.cloudflare_not_detected }}</div>
+    {% endif %}
+  </section>
+</div>
+
+<section class="panel panel-flush">
+  <header class="panel-head">
+    <div>
+      <h2>{{ t.network_interfaces }}</h2>
+      <p class="panel-sub">{{ t.network_interfaces_sub }}</p>
+    </div>
+  </header>
+  {% if interfaces|length > 0 %}
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>{{ t.network_interface }}</th>
+          <th>{{ t.status }}</th>
+          <th>{{ t.network_addresses }}</th>
+          <th class="right">{{ t.network_rx }}</th>
+          <th class="right">{{ t.network_tx }}</th>
+          <th class="right">{{ t.network_rx_rate }}</th>
+          <th class="right">{{ t.network_tx_rate }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for iface in interfaces %}
+        <tr data-net-iface="{{ iface.name }}">
+          <td class="strong mono-sub">{{ iface.name }}</td>
+          <td><span class="status status-{{ iface.state_class }}"><i></i>{{ iface.state }}</span></td>
+          <td class="mono-sub">{{ iface.addresses }}</td>
+          <td class="num right" data-net-field="rx_text">{{ iface.rx_text }}</td>
+          <td class="num right" data-net-field="tx_text">{{ iface.tx_text }}</td>
+          <td class="num right" data-net-field="rx_rate_text">{{ iface.rx_rate_text }}</td>
+          <td class="num right" data-net-field="tx_rate_text">{{ iface.tx_rate_text }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty">{{ t.network_no_interfaces }}</div>
+  {% endif %}
+</section>
+
+<p class="hint">{{ t.network_hint }}</p>
+{% endblock %}

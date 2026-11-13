@@ -17,6 +17,7 @@
   </script>
   <link rel="stylesheet" href="/static/app.css?v={{ version }}">
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  {% block head %}{% endblock %}
 </head>
 <body>
   <a class="skip" href="#content">{{ t.skip_content }}</a>
@@ -46,6 +47,18 @@
         <a class="nav-link{% if active == 'images' %} is-active{% endif %}" href="/images"{% if active == 'images' %} aria-current="page"{% endif %}>
           <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="4" width="14" height="12" rx="1.5"/><circle cx="7.5" cy="8" r="1.2"/><path d="m4 14 4-4 3 3 2-2 3 3"/></svg>
           <span>{{ t.nav_images }}</span>
+        </a>
+        <a class="nav-link{% if active == 'apps' %} is-active{% endif %}" href="/apps"{% if active == 'apps' %} aria-current="page"{% endif %}>
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="3" width="6" height="6" rx="1.2"/><rect x="11" y="3" width="6" height="6" rx="1.2"/><rect x="3" y="11" width="6" height="6" rx="1.2"/><path d="M14 11v6M11 14h6"/></svg>
+          <span>{{ t.nav_apps }}</span>
+        </a>
+        <a class="nav-link{% if active == 'network' %} is-active{% endif %}" href="/network"{% if active == 'network' %} aria-current="page"{% endif %}>
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="M3 10h14M10 3c2.2 2.1 3.3 4.4 3.3 7S12.2 15.9 10 17c-2.2-1.1-3.3-3.4-3.3-7S7.8 5.1 10 3z"/></svg>
+          <span>{{ t.nav_network }}</span>
+        </a>
+        <a class="nav-link{% if active == 'terminal' %} is-active{% endif %}" href="/terminal"{% if active == 'terminal' %} aria-current="page"{% endif %}>
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="4" width="14" height="12" rx="1.5"/><path d="m6 8 3 2-3 2M11 12h3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span>{{ t.nav_terminal }}</span>
         </a>
         <a class="nav-link{% if active == 'metrics' %} is-active{% endif %}" href="/metrics"{% if active == 'metrics' %} aria-current="page"{% endif %}>
           <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 16V4M3 16h14"/><path d="m6 12 3-4 3 2 4-6"/></svg>
@@ -109,5 +122,6 @@
     </div>
   </div>
   <script src="/static/app.js?v={{ version }}" defer></script>
+  {% block scripts %}{% endblock %}
 </body>
 </html>

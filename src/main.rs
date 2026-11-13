@@ -1,6 +1,7 @@
 mod config;
 mod db;
 mod docker;
+mod host;
 mod i18n;
 mod logging;
 mod monitor;
@@ -38,6 +39,12 @@ async fn main() -> Result<()> {
         Some(message) => warn!(target: "workamon::docker", "{message}"),
         None => info!(target: "workamon::docker", "terhubung ke Docker daemon"),
     }
+    let host = host::HostAccess::new(&cfg);
+    if host.enabled() {
+        info!(target: "workamon::host", "akses host aktif (systemd, paket, terminal)");
+    } else {
+        warn!(target: "workamon::host", "akses host dimatikan; systemd, paket, dan terminal host tidak tersedia");
+    }
 
     let started_at = util::now();
     let disk_path = cfg.resolved_host_root().display().to_string();
@@ -48,6 +55,7 @@ async fn main() -> Result<()> {
         cfg: Arc::new(cfg),
         db: db.clone(),
         docker,
+        host,
         live: Arc::new(tokio::sync::RwLock::new(LiveSnapshot {
             last_update: started_at,
             docker_ok: false,

@@ -16,6 +16,7 @@ pub struct Config {
     pub sample_secs: u64,
     pub container_sample_secs: u64,
     pub host_root: PathBuf,
+    pub host_exec: bool,
     pub docker_enabled: bool,
     pub session_hours: i64,
     pub log_retention_days: i64,
@@ -47,6 +48,9 @@ impl Config {
         let host_root = PathBuf::from(
             env::var("WORKAMON_HOST_ROOT").unwrap_or_else(|_| "/".into()),
         );
+        let host_exec = env::var("WORKAMON_HOST_EXEC")
+            .map(|v| matches!(v.trim().to_ascii_lowercase().as_str(), "1" | "true" | "on" | "yes"))
+            .unwrap_or(false);
         let docker_enabled = env::var("WORKAMON_DOCKER")
             .map(|v| !matches!(v.trim().to_ascii_lowercase().as_str(), "0" | "false" | "off" | "no"))
             .unwrap_or(true);
@@ -77,6 +81,7 @@ impl Config {
             sample_secs,
             container_sample_secs,
             host_root,
+            host_exec,
             docker_enabled,
             session_hours,
             log_retention_days,

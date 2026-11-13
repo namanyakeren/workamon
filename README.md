@@ -1,8 +1,10 @@
 # WORKA MON
 
-Versi 0.2.0. Pemantau server rumah untuk Raspberry Pi dan mesin Linux kecil. Satu halaman
-untuk melihat CPU, RAM, penyimpanan host, dan container Docker, lengkap dengan
-riwayat SQLite, log aplikasi, serta aksi start/stop/restart container.
+Versi 0.3.0. Panel server rumah untuk Raspberry Pi dan mesin Linux kecil. Satu
+halaman untuk melihat CPU, RAM, penyimpanan host, container Docker, service
+systemd, paket terpasang, jaringan, dan Cloudflare Tunnel. Workamon juga bisa
+memasang aplikasi dari katalog paket Debian, mengelola service, dan membuka
+terminal host langsung dari browser tanpa SSH.
 
 Tampilan dibuat sederhana: server-rendered, tanpa framework frontend, tema
 terang sebagai default, dan tombol tema gelap di kanan atas (atau `Shift + D`).
@@ -18,6 +20,17 @@ terang sebagai default, dan tombol tema gelap di kanan atas (atau `Shift + D`).
   registry, menghapus image (termasuk force delete), dan prune image dangling.
 - Detail container: informasi inspect, mount, network, log 150 baris terakhir,
   dan grafik riwayat 24 jam.
+- Halaman Apps & services: daftar service systemd dan container Docker dalam
+  satu tabel, lengkap dengan status, CPU, memori, jaringan, dan I/O disk per
+  item. Service bisa di-start, stop, restart, enable, dan disable.
+- Katalog instalasi aplikasi Debian/Raspberry Pi OS (nginx, Caddy, Cockpit,
+  Samba, Mosquitto, Node Exporter, Fail2ban, UFW, Avahi, CUPS, Netdata,
+  WireGuard) plus paket kustom. Daftar paket terpasang bisa dicari dan dihapus.
+- Terminal host live berbasis xterm.js dan WebSocket. Shell berjalan sebagai
+  root di namespace host melalui `nsenter`, tanpa perlu SSH.
+- Monitoring jaringan live: interface, alamat IP, kecepatan RX/TX, total
+  trafik, gateway default, DNS, grafik trafik, dan status Cloudflare Tunnel
+  (`cloudflared`) baik sebagai service systemd maupun container Docker.
 - Riwayat metrik live, 1 jam, 6 jam, 24 jam, dan 7 hari. Tab live diperbarui
   otomatis setiap 5 detik tanpa menunggu sampel database.
 - Antarmuka dua bahasa (Bahasa Indonesia dan English) dengan tombol ID/EN.
@@ -60,10 +73,16 @@ stat -c '%g' /var/run/docker.sock
 # isi hasilnya ke DOCKER_GID di .env
 ```
 
-Container berjalan sebagai UID/GID `1000:1000`, membaca root host secara
-read-only di `/host`, dan memakai named volume `workamon-data` untuk database.
-Jika memakai bind mount untuk `/data`, pastikan folder tersebut dapat ditulis
-oleh UID 1000.
+Untuk fitur host (systemd, paket, terminal), container dijalankan sebagai root
+dengan `pid: host` dan `privileged: true`. Root host tetap dipasang read-only
+di `/host` untuk pembacaan statistik, sementara perintah host dijalankan lewat
+`nsenter` ke namespace host. Named volume `workamon-data` menyimpan database.
+
+Jika Anda hanya ingin memantau Docker dan tidak membutuhkan kontrol host, set
+`WORKAMON_HOST_EXEC=0` lalu hapus `privileged: true`, `pid: host`, dan
+`user: "0:0"` dari `docker-compose.yml` (atau gunakan user `1000:1000`). Dengan
+begitu halaman Apps, paket, dan terminal host akan menampilkan status bahwa
+akses host dimatikan.
 
 Perintah operasional:
 
@@ -83,8 +102,15 @@ cargo run --release
 ```
 
 Saat dijalankan langsung di host, `WORKAMON_HOST_ROOT` cukup `/` dan socket
-Docker default (`/var/run/docker.sock`) dipakai otomatis. Bila ingin mematikan
-integrasi Docker:
+Docker default (`/var/run/docker.sock`) dipakai otomatis. Akses host untuk
+systemd, apt, dan terminal dimatikan secara default. Untuk mengaktifkannya,
+jalankan sebagai root:
+
+```bash
+sudo WORKAMON_HOST_EXEC=1 cargo run --release
+```
+
+Bila ingin mematikan integrasi Docker:
 
 ```bash
 WORKAMON_DOCKER=0 cargo run --release
@@ -107,7 +133,8 @@ Semua konfigurasi lewat environment variable.
 | `WORKAMON_CONTAINER_SAMPLE_SECS` | `300` | Interval riwayat container. |
 | `WORKAMON_SESSION_HOURS` | `168` | Masa berlaku sesi login. |
 | `WORKAMON_LOG_RETENTION_DAYS` | `14` | Retensi log aplikasi. |
-| `WORKAMON_HOST_ROOT` | `/` | Root host untuk disk dan suhu. Di container: `/host`. |
+| `WORKAMON_HOST_ROOT` | `/` | Root host untuk disk, suhu, dan `/proc/net/dev`. Di container: `/host`. |
+| `WORKAMON_HOST_EXEC` | `0` | Set `1` untuk mengaktifkan systemd, apt, dan terminal host. Compose default: `1`. |
 | `WORKAMON_DOCKER` | `1` | Set `0` untuk mematikan integrasi Docker. |
 | `RUST_LOG` | `workamon=info,tower_http=warn,warn` | Filter log tracing. |
 | `TZ` | sistem | Zona waktu tampilan, misal `Asia/Jakarta`. |
@@ -138,7 +165,14 @@ pengguna. Riwayat tetap tersimpan di SQLite.
 - Container Docker diberi akses ke socket Docker. Akses ke socket setara dengan
   akses root di host. Batasi port aplikasi dan jangan mengeksposnya ke internet
   tanpa autentikasi tambahan.
-- Mount `/:/host:ro` hanya untuk membaca statistik disk dan suhu host.
+- Mode host menjalankan container sebagai root dengan `privileged: true` dan
+  `pid: host`. Terminal dan aksi systemd/apt memiliki akses root penuh ke host.
+  Gunakan password kuat, HTTPS/reverse proxy, dan jangan membuka port Workamon
+  langsung ke internet. Jika tidak membutuhkan fitur ini, matikan
+  `WORKAMON_HOST_EXEC` dan hapus konfigurasi privileged dari Compose.
+- Mount `/:/host:ro` dipakai untuk membaca statistik disk, suhu, dan jaringan
+  host. Perintah host berjalan melalui `nsenter` ke namespace host.
+- WebSocket terminal memeriksa header `Origin` dan hanya tersedia setelah login.
 
 ## Struktur proyek
 
@@ -148,15 +182,16 @@ src/
   config.rs    konfigurasi environment
   db.rs        skema SQLite, query, retensi ukuran
   docker.rs    integrasi Bollard
+  host.rs      nsenter, systemd, apt, jaringan, statistik service
   monitor.rs   loop sampling dan pemeliharaan
-  web.rs       router dan handler HTTP
+  web.rs       router dan handler HTTP, terminal WebSocket
   state.rs     AppState, sesi, middleware auth
   i18n.rs      kamus Bahasa Indonesia / English
   render.rs    MiniJinja dan grafik SVG
   logging.rs   layer tracing ke SQLite
   util.rs      format, disk, suhu, ANSI
 templates/     halaman MiniJinja
-assets/        CSS, JS, favicon, i18n.json
+assets/        CSS, JS, font, xterm.js, favicon, i18n.json
 ```
 
 ## Lisensi

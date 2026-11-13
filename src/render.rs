@@ -20,6 +20,12 @@ impl Renderer {
         env.add_template("container_new.html", include_str!("../templates/container_new.html"))?;
         env.add_template("images.html", include_str!("../templates/images.html"))?;
         env.add_template("image.html", include_str!("../templates/image.html"))?;
+        env.add_template("apps.html", include_str!("../templates/apps.html"))?;
+        env.add_template("service.html", include_str!("../templates/service.html"))?;
+        env.add_template("app_new.html", include_str!("../templates/app_new.html"))?;
+        env.add_template("packages.html", include_str!("../templates/packages.html"))?;
+        env.add_template("network.html", include_str!("../templates/network.html"))?;
+        env.add_template("terminal.html", include_str!("../templates/terminal.html"))?;
         env.add_template("metrics.html", include_str!("../templates/metrics.html"))?;
         env.add_template("logs.html", include_str!("../templates/logs.html"))?;
         env.add_template("maintenance.html", include_str!("../templates/maintenance.html"))?;
@@ -193,6 +199,205 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    fn base_context(active: &str, title: &str) -> serde_json::Value {
+        json!({
+            "active": active,
+            "page_title": title,
+            "username": "admin",
+            "version": "0.3.0",
+            "db_max_mb": 10,
+            "default_creds": false,
+            "lang": "en",
+            "lang_other": "id",
+            "lang_other_short": "ID",
+            "t": i18n::dict(Lang::En),
+            "docker_ok": true,
+            "docker_error": null,
+            "flash": null,
+        })
+    }
+
+    #[test]
+    fn renders_apps_template() {
+        let renderer = Renderer::new().expect("template harus valid");
+        let mut context = base_context("apps", "Apps");
+        context["rows"] = json!([
+            {
+                "kind": "service",
+                "name": "nginx.service",
+                "unit": "nginx.service",
+                "description": "A high performance web server",
+                "href": "/apps/service?unit=nginx.service",
+                "status": "active",
+                "status_class": "ok",
+                "active": true,
+                "enabled": true,
+                "enabled_text": "enabled",
+                "enabled_class": "ok",
+                "sub_state": "running",
+                "cpu_text": "1.2%",
+                "mem_text": "10 MB",
+                "net_text": "down 1 KB/s",
+                "disk_text": "read 1 KB/s"
+            },
+            {
+                "kind": "container",
+                "name": "web",
+                "id": "abc123",
+                "href": "/containers/abc123",
+                "description": "nginx:latest",
+                "status": "running",
+                "status_class": "ok",
+                "running": true,
+                "cpu_text": "0.5%",
+                "mem_text": "20 MB",
+                "net_text": "down 1 MB",
+                "disk_text": "—"
+            }
+        ]);
+        context["q"] = json!("");
+        context["kind"] = json!("all");
+        context["services_total"] = json!(1);
+        context["services_active"] = json!(1);
+        context["containers_total"] = json!(1);
+        context["containers_running"] = json!(1);
+        context["services_ok"] = json!(true);
+        context["services_error"] = json!(null);
+        context["host_ok"] = json!(true);
+        context["host_error"] = json!(null);
+        let html = renderer.render("apps.html", &context).expect("render");
+        assert!(html.contains("nginx.service"));
+        assert!(html.contains("web"));
+    }
+
+    #[test]
+    fn renders_service_template() {
+        let renderer = Renderer::new().expect("template harus valid");
+        let mut context = base_context("apps", "Service");
+        context["s"] = json!({
+            "name": "nginx.service",
+            "unit": "nginx.service",
+            "description": "A high performance web server",
+            "status": "active",
+            "status_class": "ok",
+            "active": true,
+            "enabled": true,
+            "enabled_text": "enabled",
+            "enabled_class": "ok",
+            "sub_state": "running",
+            "unit_file_state": "enabled",
+            "main_pid": 123,
+            "cpu_text": "1.2%",
+            "cpu_pct": 1.2,
+            "mem_text": "10 MB",
+            "mem_pct": 2.0,
+            "net_text": "down 1 KB/s",
+            "disk_text": "read 1 KB/s"
+        });
+        context["unit"] = json!("nginx.service");
+        context["logs"] = json!("nginx started");
+        context["host_ok"] = json!(true);
+        context["host_error"] = json!(null);
+        context["services_ok"] = json!(true);
+        context["services_error"] = json!(null);
+        let html = renderer.render("service.html", &context).expect("render");
+        assert!(html.contains("nginx started"));
+    }
+
+    #[test]
+    fn renders_network_template() {
+        let renderer = Renderer::new().expect("template harus valid");
+        let mut context = base_context("network", "Network");
+        context["network"] = json!({
+            "rx_rate_text": "1 MB/s",
+            "tx_rate_text": "2 MB/s",
+            "rx_total_text": "10 GB",
+            "tx_total_text": "20 GB",
+            "default_gateway": "192.168.1.1",
+            "dns_text": "1.1.1.1",
+            "interface_count": 1
+        });
+        context["interfaces"] = json!([{
+            "name": "eth0",
+            "state": "up",
+            "state_class": "ok",
+            "addresses": "192.168.1.2/24",
+            "rx_text": "10 GB",
+            "tx_text": "20 GB",
+            "rx_rate_text": "1 MB/s",
+            "tx_rate_text": "2 MB/s"
+        }]);
+        context["cloudflare"] = json!([{
+            "kind": "service",
+            "name": "cloudflared.service",
+            "description": "Cloudflare Tunnel",
+            "state": "active",
+            "state_class": "ok",
+            "cpu_text": "0.1%",
+            "mem_text": "30 MB",
+            "net_text": "down 1 KB/s"
+        }]);
+        context["rx_chart"] = json!("<svg></svg>");
+        context["tx_chart"] = json!("<svg></svg>");
+        context["network_ok"] = json!(true);
+        context["network_error"] = json!(null);
+        context["host_ok"] = json!(true);
+        context["host_error"] = json!(null);
+        let html = renderer.render("network.html", &context).expect("render");
+        assert!(html.contains("eth0"));
+        assert!(html.contains("cloudflared.service"));
+    }
+
+    #[test]
+    fn renders_packages_template() {
+        let renderer = Renderer::new().expect("template harus valid");
+        let mut context = base_context("apps", "Packages");
+        context["rows"] = json!([{
+            "name": "nginx",
+            "version": "1.24.0",
+            "architecture": "arm64",
+            "summary": "Web server"
+        }]);
+        context["q"] = json!("");
+        context["total"] = json!(1);
+        context["page"] = json!(1);
+        context["total_pages"] = json!(1);
+        context["prev_link"] = json!(null);
+        context["next_link"] = json!(null);
+        context["host_ok"] = json!(true);
+        context["host_error"] = json!(null);
+        context["error"] = json!(null);
+        let html = renderer.render("packages.html", &context).expect("render");
+        assert!(html.contains("nginx"));
+    }
+
+    #[test]
+    fn renders_terminal_template() {
+        let renderer = Renderer::new().expect("template harus valid");
+        let mut context = base_context("terminal", "Terminal");
+        context["host_ok"] = json!(true);
+        context["host_error"] = json!(null);
+        let html = renderer.render("terminal.html", &context).expect("render");
+        assert!(html.contains("xterm.js"));
+    }
+
+    #[test]
+    fn renders_app_new_template() {
+        let renderer = Renderer::new().expect("template harus valid");
+        let mut context = base_context("apps", "Install");
+        context["catalog"] = json!([{
+            "package": "nginx",
+            "title": "nginx",
+            "description": "Web server",
+            "service": "nginx.service",
+            "port": "80"
+        }]);
+        context["host_ok"] = json!(true);
+        context["host_error"] = json!(null);
+        let html = renderer.render("app_new.html", &context).expect("render");
+        assert!(html.contains("nginx.service"));
+    }
+
     #[test]
     fn renders_image_detail_template() {
         let renderer = Renderer::new().expect("template harus valid");
@@ -200,7 +405,7 @@ mod tests {
             "active": "images",
             "page_title": "Images",
             "username": "admin",
-            "version": "0.2.0",
+            "version": "0.3.0",
             "db_max_mb": 10,
             "default_creds": false,
             "lang": "en",

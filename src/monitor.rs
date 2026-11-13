@@ -6,6 +6,7 @@ use tracing::{error, info, warn};
 
 use crate::db::{ContainerSample, SystemSample};
 use crate::docker;
+use crate::host::{NetPrev, NetworkSample, NetworkSnapshot, ServicePrev};
 use crate::state::{AppState, LiveSnapshot};
 use crate::util;
 
@@ -33,7 +34,13 @@ pub async fn run(state: AppState) {
     system.refresh_cpu_usage();
 
     let mut previous_cpu: HashMap<String, (u64, u64)> = HashMap::new();
+    let mut previous_services: HashMap<String, ServicePrev> = HashMap::new();
+    let mut previous_network: HashMap<String, NetPrev> = HashMap::new();
     let mut containers = Vec::new();
+    let mut services = Vec::new();
+    let mut network: Option<NetworkSnapshot> = None;
+    let mut network_history: Vec<NetworkSample> = Vec::with_capacity(MAX_LIVE_POINTS);
+    let mut network_addresses: HashMap<String, Vec<String>> = HashMap::new();
     let mut history: Vec<SystemSample> = Vec::with_capacity(MAX_LIVE_POINTS);
     let mut docker_ok = state.docker.is_some();
     let mut docker_error = if state.docker.is_some() {
@@ -41,7 +48,14 @@ pub async fn run(state: AppState) {
     } else {
         state.docker_startup_error.clone()
     };
+    let mut services_ok = false;
+    let mut services_error = state.host.disabled_message();
+    let mut network_ok;
+    let mut network_error: Option<String>;
     let mut last_docker_error: Option<String> = None;
+    let mut last_services_error: Option<String> = None;
+    let mut last_network_error: Option<String> = None;
+    let mut last_network_address_refresh = Instant::now() - Duration::from_secs(60);
     let mut last_maintenance = Instant::now() - Duration::from_secs(3_600);
     let mut tick: u64 = 0;
 
@@ -116,6 +130,90 @@ pub async fn run(state: AppState) {
             }
         }
 
+        if refresh_docker {
+            if state.host.enabled() {
+                match tokio::time::timeout(
+                    Duration::from_secs(20),
+                    state.host.list_services(&mut previous_services),
+                )
+                .await
+                {
+                    Ok(Ok(list)) => {
+                        services = list;
+                        services_ok = true;
+                        if last_services_error.is_some() {
+                            info!(target: "workamon::host", "pembacaan service systemd pulih");
+                        }
+                        last_services_error = None;
+                        services_error = None;
+                    }
+                    Ok(Err(error)) => {
+                        let message = format!("{error:#}");
+                        services_ok = false;
+                        if last_services_error.as_deref() != Some(message.as_str()) {
+                            warn!(target: "workamon::host", "gagal membaca service systemd: {message}");
+                        }
+                        last_services_error = Some(message.clone());
+                        services_error = Some(message);
+                    }
+                    Err(_) => {
+                        let message =
+                            "pembacaan service systemd melewati batas waktu 20 detik".to_string();
+                        services_ok = false;
+                        if last_services_error.as_deref() != Some(message.as_str()) {
+                            warn!(target: "workamon::host", "{message}");
+                        }
+                        last_services_error = Some(message.clone());
+                        services_error = Some(message);
+                    }
+                }
+            } else {
+                services_ok = false;
+                services_error = state.host.disabled_message();
+            }
+        }
+
+        match state.host.network_snapshot(&mut previous_network).await {
+            Ok(mut snapshot) => {
+                if last_network_address_refresh.elapsed() >= Duration::from_secs(60) {
+                    last_network_address_refresh = Instant::now();
+                    if let Ok(addresses) = state.host.network_addresses().await {
+                        network_addresses = addresses;
+                    }
+                }
+                for interface in &mut snapshot.interfaces {
+                    if let Some(addresses) = network_addresses.get(&interface.name) {
+                        interface.addresses = addresses.clone();
+                    }
+                }
+                network_history.push(NetworkSample {
+                    ts,
+                    rx_rate: snapshot.rx_rate,
+                    tx_rate: snapshot.tx_rate,
+                });
+                if network_history.len() > MAX_LIVE_POINTS {
+                    let excess = network_history.len() - MAX_LIVE_POINTS;
+                    network_history.drain(0..excess);
+                }
+                network = Some(snapshot);
+                network_ok = true;
+                if last_network_error.is_some() {
+                    info!(target: "workamon::host", "pembacaan network host pulih");
+                }
+                last_network_error = None;
+                network_error = None;
+            }
+            Err(error) => {
+                let message = format!("{error:#}");
+                network_ok = false;
+                if last_network_error.as_deref() != Some(message.as_str()) {
+                    warn!(target: "workamon::host", "gagal membaca network host: {message}");
+                }
+                last_network_error = Some(message.clone());
+                network_error = Some(message);
+            }
+        }
+
         let running = containers
             .iter()
             .filter(|container| container.state == "running")
@@ -184,6 +282,13 @@ pub async fn run(state: AppState) {
                 system: Some(sample),
                 history: history.clone(),
                 containers: containers.clone(),
+                services: services.clone(),
+                services_ok,
+                services_error: services_error.clone(),
+                network: network.clone(),
+                network_history: network_history.clone(),
+                network_ok,
+                network_error: network_error.clone(),
                 docker_ok,
                 docker_error: docker_error.clone(),
                 last_update: util::now(),

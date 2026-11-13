@@ -1,12 +1,19 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
+use std::io::{Read, Write};
+use std::sync::mpsc as std_mpsc;
+use std::thread;
+
+use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path, Query, State};
 use axum::http::{header, HeaderMap, HeaderName, HeaderValue, StatusCode};
 use axum::middleware;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use axum::{Form, Json, Router};
+use futures_util::{SinkExt, StreamExt};
+use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
 use tower_http::set_header::SetResponseHeaderLayer;
@@ -15,6 +22,7 @@ use tracing::{error, info, warn};
 use crate::config::{Config, VERSION};
 use crate::db::{DbStats, LogRow, SystemSample};
 use crate::docker::{self, ContainerLive, DfView, NewContainer};
+use crate::host::{self, PackageLive, ServiceLive};
 use crate::i18n::{self, Lang};
 use crate::render::line_chart;
 use crate::state::{
@@ -35,6 +43,16 @@ pub fn router(state: AppState) -> Router {
         .route("/images/pull", post(image_pull))
         .route("/images/remove", post(image_remove))
         .route("/images/prune", post(image_prune))
+        .route("/apps", get(apps_page))
+        .route("/apps/new", get(app_new_page))
+        .route("/apps/install", post(app_install))
+        .route("/apps/service", get(service_page))
+        .route("/apps/service/action", post(service_action))
+        .route("/apps/package/action", post(package_action))
+        .route("/packages", get(packages_page))
+        .route("/network", get(network_page))
+        .route("/terminal", get(terminal_page))
+        .route("/ws/terminal", get(terminal_ws))
         .route("/metrics", get(metrics_page))
         .route("/logs", get(logs_page))
         .route("/maintenance", get(maintenance_page))
@@ -42,6 +60,8 @@ pub fn router(state: AppState) -> Router {
         .route("/maintenance/db/{action}", post(db_action))
         .route("/api/live", get(api_live))
         .route("/api/metrics/live", get(api_metrics_live))
+        .route("/api/apps/live", get(api_apps_live))
+        .route("/api/network/live", get(api_network_live))
         .route("/api/containers/{id}/stats", get(api_container_stats))
         .route_layer(middleware::from_fn_with_state(state.clone(), require_auth));
 
@@ -52,6 +72,10 @@ pub fn router(state: AppState) -> Router {
         .route("/healthz", get(healthz))
         .route("/static/app.css", get(asset_css))
         .route("/static/app.js", get(asset_js))
+        .route("/static/terminal.js", get(asset_terminal_js))
+        .route("/static/xterm.css", get(asset_xterm_css))
+        .route("/static/xterm.js", get(asset_xterm_js))
+        .route("/static/addon-fit.js", get(asset_addon_fit))
         .route("/static/favicon.svg", get(asset_favicon))
         .route("/static/fonts/manrope-latin.woff2", get(asset_manrope))
         .route(
@@ -79,7 +103,7 @@ pub fn router(state: AppState) -> Router {
         .layer(SetResponseHeaderLayer::overriding(
             HeaderName::from_static("content-security-policy"),
             HeaderValue::from_static(
-                "default-src 'self'; font-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'",
+                "default-src 'self'; font-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws: wss:; base-uri 'none'; frame-ancestors 'none'",
             ),
         ))
         .with_state(state)
@@ -95,6 +119,34 @@ async fn asset_css() -> Response {
 async fn asset_js() -> Response {
     asset(
         include_str!("../assets/app.js"),
+        "text/javascript; charset=utf-8",
+    )
+}
+
+async fn asset_terminal_js() -> Response {
+    asset(
+        include_str!("../assets/terminal.js"),
+        "text/javascript; charset=utf-8",
+    )
+}
+
+async fn asset_xterm_css() -> Response {
+    asset(
+        include_str!("../assets/xterm.css"),
+        "text/css; charset=utf-8",
+    )
+}
+
+async fn asset_xterm_js() -> Response {
+    asset(
+        include_str!("../assets/xterm.js"),
+        "text/javascript; charset=utf-8",
+    )
+}
+
+async fn asset_addon_fit() -> Response {
+    asset(
+        include_str!("../assets/addon-fit.js"),
         "text/javascript; charset=utf-8",
     )
 }
@@ -492,6 +544,832 @@ async fn containers_page(
         &i18n::t(lang, "containers_title"),
         context,
     )
+}
+
+async fn apps_page(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<HashMap<String, String>>,
+) -> Response {
+    let lang = Lang::from_headers(&headers);
+    let live = state.live.read().await.clone();
+    let search = query.get("q").cloned().unwrap_or_default();
+    let search_lower = search.trim().to_ascii_lowercase();
+    let kind = match query.get("kind").map(String::as_str) {
+        Some("service") => "service",
+        Some("container") => "container",
+        _ => "all",
+    };
+
+    let mut rows = Vec::new();
+    if kind == "all" || kind == "service" {
+        for service in &live.services {
+            if search_lower.is_empty()
+                || service.unit.to_ascii_lowercase().contains(&search_lower)
+                || service.description.to_ascii_lowercase().contains(&search_lower)
+            {
+                rows.push(service_view(service, lang));
+            }
+        }
+    }
+    if kind == "all" || kind == "container" {
+        for container in &live.containers {
+            if search_lower.is_empty()
+                || container.name.to_ascii_lowercase().contains(&search_lower)
+                || container.image.to_ascii_lowercase().contains(&search_lower)
+            {
+                let mut row = container_view(container, lang);
+                if let Value::Object(ref mut map) = row {
+                    map.insert("kind".into(), json!("container"));
+                }
+                rows.push(row);
+            }
+        }
+    }
+    rows.sort_by(|a, b| {
+        let a_name = a.get("name").and_then(Value::as_str).unwrap_or("");
+        let b_name = b.get("name").and_then(Value::as_str).unwrap_or("");
+        a_name
+            .to_ascii_lowercase()
+            .cmp(&b_name.to_ascii_lowercase())
+    });
+
+    let services_active = live
+        .services
+        .iter()
+        .filter(|service| service.active_state == "active")
+        .count();
+    let containers_running = live
+        .containers
+        .iter()
+        .filter(|container| container.state == "running")
+        .count();
+
+    let context = json!({
+        "rows": rows,
+        "q": search,
+        "kind": kind,
+        "services_total": live.services.len(),
+        "services_active": services_active,
+        "containers_total": live.containers.len(),
+        "containers_running": containers_running,
+        "services_ok": live.services_ok,
+        "services_error": live.services_error,
+        "host_ok": state.host.enabled(),
+        "host_error": state.host.disabled_message(),
+        "docker_ok": live.docker_ok,
+        "docker_error": live.docker_error,
+        "flash": flash_value(flash_from_query(&query)),
+    });
+    render_page(
+        &state,
+        lang,
+        "apps.html",
+        "apps",
+        &i18n::t(lang, "apps_title"),
+        context,
+    )
+}
+
+async fn service_page(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<HashMap<String, String>>,
+) -> Response {
+    let lang = Lang::from_headers(&headers);
+    let unit = query.get("unit").cloned().unwrap_or_default();
+    if !host::valid_unit_name(&unit) {
+        return render_error(
+            &state,
+            lang,
+            StatusCode::NOT_FOUND,
+            &i18n::t(lang, "err_service_not_found_title"),
+            &i18n::t(lang, "err_service_not_found_body"),
+        );
+    }
+
+    let live = state.live.read().await.clone();
+    let Some(service) = live.services.iter().find(|service| service.unit == unit) else {
+        return render_error(
+            &state,
+            lang,
+            StatusCode::NOT_FOUND,
+            &i18n::t(lang, "err_service_not_found_title"),
+            &i18n::t(lang, "err_service_not_found_body"),
+        );
+    };
+
+    let logs = if state.host.enabled() {
+        match tokio::time::timeout(
+            Duration::from_secs(20),
+            state.host.service_logs(&unit, 200),
+        )
+        .await
+        {
+            Ok(Ok(logs)) => logs,
+            Ok(Err(error)) => i18n::tf(
+                lang,
+                "msg_service_logs_failed",
+                &[("error", format!("{error:#}"))],
+            ),
+            Err(_) => i18n::t(lang, "msg_service_logs_timeout"),
+        }
+    } else {
+        state
+            .host
+            .disabled_message()
+            .unwrap_or_else(|| i18n::t(lang, "msg_host_disabled"))
+    };
+
+    let context = json!({
+        "s": service_view(service, lang),
+        "unit": unit,
+        "logs": logs,
+        "host_ok": state.host.enabled(),
+        "host_error": state.host.disabled_message(),
+        "services_ok": live.services_ok,
+        "services_error": live.services_error,
+        "flash": flash_value(flash_from_query(&query)),
+    });
+    render_page(
+        &state,
+        lang,
+        "service.html",
+        "apps",
+        &format!("{} {unit}", i18n::t(lang, "service_detail_title")),
+        context,
+    )
+}
+
+#[derive(Deserialize)]
+struct ServiceActionForm {
+    unit: String,
+    action: String,
+    #[serde(default)]
+    back: Option<String>,
+}
+
+async fn service_action(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Form(form): Form<ServiceActionForm>,
+) -> Response {
+    let lang = Lang::from_headers(&headers);
+    let default_back = format!("/apps/service?unit={}", util::url_encode(&form.unit));
+    let back = form
+        .back
+        .filter(|path| path.starts_with("/apps"))
+        .unwrap_or(default_back);
+
+    if !host::valid_unit_name(&form.unit) {
+        return redirect_msg(
+            &back,
+            "error",
+            &i18n::t(lang, "msg_service_unit_invalid"),
+        );
+    }
+    if !matches!(
+        form.action.as_str(),
+        "start" | "stop" | "restart" | "enable" | "disable"
+    ) {
+        return redirect_msg(
+            &back,
+            "error",
+            &i18n::t(lang, "msg_service_action_unknown"),
+        );
+    }
+    if !state.host.enabled() {
+        return redirect_msg(&back, "error", &i18n::t(lang, "msg_host_disabled"));
+    }
+
+    match tokio::time::timeout(
+        Duration::from_secs(90),
+        state.host.service_action(&form.unit, &form.action),
+    )
+    .await
+    {
+        Ok(Ok(_)) => {
+            info!(
+                target: "workamon::host",
+                "service {} berhasil di-{}",
+                form.unit,
+                form.action
+            );
+            redirect_msg(
+                &back,
+                "ok",
+                &i18n::tf(
+                    lang,
+                    "msg_service_action_ok",
+                    &[
+                        ("action", action_label(lang, &form.action)),
+                        ("unit", form.unit.clone()),
+                    ],
+                ),
+            )
+        }
+        Ok(Err(error)) => {
+            warn!(
+                target: "workamon::host",
+                "gagal {} service {}: {error:#}",
+                form.action,
+                form.unit
+            );
+            redirect_msg(
+                &back,
+                "error",
+                &i18n::tf(
+                    lang,
+                    "msg_service_action_failed",
+                    &[
+                        ("action", action_label(lang, &form.action)),
+                        ("unit", form.unit.clone()),
+                        ("error", format!("{error:#}")),
+                    ],
+                ),
+            )
+        }
+        Err(_) => {
+            warn!(
+                target: "workamon::host",
+                "aksi {} service {} melewati batas waktu",
+                form.action,
+                form.unit
+            );
+            redirect_msg(
+                &back,
+                "error",
+                &i18n::t(lang, "msg_service_action_timeout"),
+            )
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct AppInstallForm {
+    package: String,
+    #[serde(default)]
+    service: String,
+    #[serde(default)]
+    start: Option<String>,
+    #[serde(default)]
+    update_index: Option<String>,
+}
+
+async fn app_new_page(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<HashMap<String, String>>,
+) -> Response {
+    let lang = Lang::from_headers(&headers);
+    let context = json!({
+        "catalog": app_catalog_view(lang),
+        "host_ok": state.host.enabled(),
+        "host_error": state.host.disabled_message(),
+        "flash": flash_value(flash_from_query(&query)),
+    });
+    render_page(
+        &state,
+        lang,
+        "app_new.html",
+        "apps",
+        &i18n::t(lang, "app_install_title"),
+        context,
+    )
+}
+
+async fn app_install(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Form(form): Form<AppInstallForm>,
+) -> Response {
+    let lang = Lang::from_headers(&headers);
+    let package = form.package.trim().to_string();
+    if !host::valid_package_name(&package) {
+        return redirect_msg(
+            "/apps/new",
+            "error",
+            &i18n::t(lang, "msg_package_name_invalid"),
+        );
+    }
+    let service = form.service.trim().to_string();
+    if !service.is_empty() && !host::valid_unit_name(&service) {
+        return redirect_msg(
+            "/apps/new",
+            "error",
+            &i18n::t(lang, "msg_service_unit_invalid"),
+        );
+    }
+    if !state.host.enabled() {
+        return redirect_msg("/apps/new", "error", &i18n::t(lang, "msg_host_disabled"));
+    }
+
+    let service_opt = if service.is_empty() {
+        None
+    } else {
+        Some(service.as_str())
+    };
+    match tokio::time::timeout(
+        Duration::from_secs(900),
+        state.host.install_package(
+            &package,
+            service_opt,
+            form.start.is_some(),
+            form.update_index.is_some(),
+        ),
+    )
+    .await
+    {
+        Ok(Ok(output)) => {
+            info!(
+                target: "workamon::apps",
+                "paket {} selesai dipasang ({} baris output)",
+                package,
+                output.lines().count()
+            );
+            redirect_msg(
+                "/apps",
+                "ok",
+                &i18n::tf(
+                    lang,
+                    "msg_package_install_ok",
+                    &[("package", package.clone())],
+                ),
+            )
+        }
+        Ok(Err(error)) => {
+            warn!(target: "workamon::apps", "gagal memasang paket {package}: {error:#}");
+            redirect_msg(
+                "/apps/new",
+                "error",
+                &i18n::tf(
+                    lang,
+                    "msg_package_install_failed",
+                    &[("package", package.clone()), ("error", format!("{error:#}"))],
+                ),
+            )
+        }
+        Err(_) => {
+            warn!(target: "workamon::apps", "pemasangan paket {package} melewati batas waktu");
+            redirect_msg(
+                "/apps/new",
+                "error",
+                &i18n::t(lang, "msg_package_install_timeout"),
+            )
+        }
+    }
+}
+
+async fn packages_page(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<HashMap<String, String>>,
+) -> Response {
+    let lang = Lang::from_headers(&headers);
+    let search = query.get("q").cloned().unwrap_or_default();
+    let search_lower = search.trim().to_ascii_lowercase();
+    let requested_page = query
+        .get("page")
+        .and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or(1)
+        .max(1);
+    let per_page = 100;
+
+    let mut packages = Vec::new();
+    let mut error = None;
+    if state.host.enabled() {
+        match tokio::time::timeout(Duration::from_secs(30), state.host.list_packages()).await {
+            Ok(Ok(list)) => packages = list,
+            Ok(Err(failure)) => error = Some(format!("{failure:#}")),
+            Err(_) => error = Some(i18n::t(lang, "msg_package_list_timeout")),
+        }
+    } else {
+        error = state.host.disabled_message();
+    }
+
+    let filtered: Vec<&PackageLive> = packages
+        .iter()
+        .filter(|package| {
+            search_lower.is_empty()
+                || package.name.to_ascii_lowercase().contains(&search_lower)
+                || package.summary.to_ascii_lowercase().contains(&search_lower)
+        })
+        .collect();
+    let total = filtered.len();
+    let total_pages = ((total + per_page - 1) / per_page).max(1);
+    let page = requested_page.min(total_pages);
+    let rows: Vec<Value> = filtered
+        .iter()
+        .skip((page - 1) * per_page)
+        .take(per_page)
+        .map(|package| package_view(package))
+        .collect();
+
+    let prev_link = if page > 1 {
+        Some(packages_link(&search, page - 1))
+    } else {
+        None
+    };
+    let next_link = if page < total_pages {
+        Some(packages_link(&search, page + 1))
+    } else {
+        None
+    };
+
+    let context = json!({
+        "rows": rows,
+        "q": search,
+        "total": total,
+        "page": page,
+        "total_pages": total_pages,
+        "prev_link": prev_link,
+        "next_link": next_link,
+        "host_ok": state.host.enabled(),
+        "host_error": state.host.disabled_message(),
+        "error": error,
+        "flash": flash_value(flash_from_query(&query)),
+    });
+    render_page(
+        &state,
+        lang,
+        "packages.html",
+        "apps",
+        &i18n::t(lang, "packages_title"),
+        context,
+    )
+}
+
+#[derive(Deserialize)]
+struct PackageActionForm {
+    package: String,
+    action: String,
+    #[serde(default)]
+    confirm: Option<String>,
+}
+
+async fn package_action(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Form(form): Form<PackageActionForm>,
+) -> Response {
+    let lang = Lang::from_headers(&headers);
+    if !host::valid_package_name(&form.package) {
+        return redirect_msg(
+            "/packages",
+            "error",
+            &i18n::t(lang, "msg_package_name_invalid"),
+        );
+    }
+    if !matches!(form.action.as_str(), "remove" | "purge") {
+        return redirect_msg(
+            "/packages",
+            "error",
+            &i18n::t(lang, "msg_package_action_unknown"),
+        );
+    }
+    if form.confirm.as_deref() != Some("yes") {
+        return redirect_msg(
+            "/packages",
+            "error",
+            &i18n::t(lang, "msg_confirm_invalid"),
+        );
+    }
+    if !state.host.enabled() {
+        return redirect_msg(
+            "/packages",
+            "error",
+            &i18n::t(lang, "msg_host_disabled"),
+        );
+    }
+
+    let purge = form.action == "purge";
+    match tokio::time::timeout(
+        Duration::from_secs(600),
+        state.host.remove_package(&form.package, purge),
+    )
+    .await
+    {
+        Ok(Ok(_)) => {
+            info!(
+                target: "workamon::apps",
+                "paket {} dihapus (purge={purge})",
+                form.package
+            );
+            redirect_msg(
+                "/packages",
+                "ok",
+                &i18n::tf(
+                    lang,
+                    "msg_package_remove_ok",
+                    &[("package", form.package.clone())],
+                ),
+            )
+        }
+        Ok(Err(error)) => {
+            warn!(target: "workamon::apps", "gagal menghapus paket {}: {error:#}", form.package);
+            redirect_msg(
+                "/packages",
+                "error",
+                &i18n::tf(
+                    lang,
+                    "msg_package_remove_failed",
+                    &[
+                        ("package", form.package.clone()),
+                        ("error", format!("{error:#}")),
+                    ],
+                ),
+            )
+        }
+        Err(_) => {
+            warn!(target: "workamon::apps", "penghapusan paket {} melewati batas waktu", form.package);
+            redirect_msg(
+                "/packages",
+                "error",
+                &i18n::t(lang, "msg_package_remove_timeout"),
+            )
+        }
+    }
+}
+
+async fn network_page(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<HashMap<String, String>>,
+) -> Response {
+    let lang = Lang::from_headers(&headers);
+    let live = state.live.read().await.clone();
+    let network = live.network.clone().unwrap_or_default();
+    let rx_points: Vec<(i64, f64)> = live
+        .network_history
+        .iter()
+        .map(|sample| (sample.ts, sample.rx_rate))
+        .collect();
+    let tx_points: Vec<(i64, f64)> = live
+        .network_history
+        .iter()
+        .map(|sample| (sample.ts, sample.tx_rate))
+        .collect();
+    let cloudflare = cloudflare_views(&live.services, &live.containers, lang);
+
+    let context = json!({
+        "network": network_view(&network, lang),
+        "interfaces": network.interfaces.iter().map(|interface| network_interface_view(interface)).collect::<Vec<_>>(),
+        "cloudflare": cloudflare,
+        "rx_chart": line_chart(&rx_points, 1000, 190, Some(0.0), None, "bytes", "chart-cpu", lang),
+        "tx_chart": line_chart(&tx_points, 1000, 190, Some(0.0), None, "bytes", "chart-mem", lang),
+        "network_ok": live.network_ok,
+        "network_error": live.network_error,
+        "host_ok": state.host.enabled(),
+        "host_error": state.host.disabled_message(),
+        "flash": flash_value(flash_from_query(&query)),
+    });
+    render_page(
+        &state,
+        lang,
+        "network.html",
+        "network",
+        &i18n::t(lang, "network_title"),
+        context,
+    )
+}
+
+async fn terminal_page(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<HashMap<String, String>>,
+) -> Response {
+    let lang = Lang::from_headers(&headers);
+    let context = json!({
+        "host_ok": state.host.enabled(),
+        "host_error": state.host.disabled_message(),
+        "flash": flash_value(flash_from_query(&query)),
+    });
+    render_page(
+        &state,
+        lang,
+        "terminal.html",
+        "terminal",
+        &i18n::t(lang, "terminal_title"),
+        context,
+    )
+}
+
+async fn terminal_ws(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ws: WebSocketUpgrade,
+) -> Response {
+    if !origin_allowed(&headers) {
+        return (StatusCode::FORBIDDEN, "invalid websocket origin").into_response();
+    }
+    if !state.host.enabled() {
+        let lang = Lang::from_headers(&headers);
+        return (
+            StatusCode::FORBIDDEN,
+            i18n::t(lang, "terminal_host_disabled"),
+        )
+            .into_response();
+    }
+    ws.on_upgrade(move |socket| terminal_session(socket, state))
+}
+
+fn spawn_terminal_command(
+    slave: &dyn portable_pty::SlavePty,
+    program: &str,
+    args: &[String],
+) -> anyhow::Result<Box<dyn portable_pty::Child + Send + Sync>> {
+    let mut command = CommandBuilder::new(program);
+    for arg in args {
+        command.arg(arg);
+    }
+    command.env("TERM", "xterm-256color");
+    slave.spawn_command(command)
+}
+
+async fn terminal_session(mut socket: WebSocket, state: AppState) {
+    let pty_system = native_pty_system();
+    let pair = match pty_system.openpty(PtySize {
+        rows: 28,
+        cols: 120,
+        pixel_width: 0,
+        pixel_height: 0,
+    }) {
+        Ok(pair) => pair,
+        Err(error) => {
+            let _ = socket
+                .send(Message::Text(
+                    format!("Gagal membuka terminal: {error}").into(),
+                ))
+                .await;
+            return;
+        }
+    };
+
+    let (program, args) = state.host.shell_command();
+    let first_spawn = spawn_terminal_command(pair.slave.as_ref(), &program, &args);
+    let mut child = match first_spawn {
+        Ok(child) => child,
+        Err(first_error) => {
+            let fallback_args: Vec<String> = args
+                .iter()
+                .map(|arg| {
+                    if arg == "/bin/bash" {
+                        "/bin/sh".to_string()
+                    } else {
+                        arg.clone()
+                    }
+                })
+                .collect();
+            if program == "nsenter" && fallback_args != args {
+                match spawn_terminal_command(pair.slave.as_ref(), "nsenter", &fallback_args) {
+                    Ok(child) => child,
+                    Err(second_error) => {
+                        let _ = socket
+                            .send(Message::Text(
+                                format!(
+                                    "Gagal menjalankan shell host: {first_error}; fallback /bin/sh juga gagal: {second_error}"
+                                )
+                                .into(),
+                            ))
+                            .await;
+                        return;
+                    }
+                }
+            } else {
+                let _ = socket
+                    .send(Message::Text(
+                        format!("Gagal menjalankan shell host: {first_error}").into(),
+                    ))
+                    .await;
+                return;
+            }
+        }
+    };
+    drop(pair.slave);
+
+    let master = pair.master;
+    let mut reader = match master.try_clone_reader() {
+        Ok(reader) => reader,
+        Err(error) => {
+            let _ = child.kill();
+            let _ = socket
+                .send(Message::Text(
+                    format!("Gagal membaca terminal: {error}").into(),
+                ))
+                .await;
+            return;
+        }
+    };
+    let mut writer = match master.take_writer() {
+        Ok(writer) => writer,
+        Err(error) => {
+            let _ = child.kill();
+            let _ = socket
+                .send(Message::Text(
+                    format!("Gagal menulis terminal: {error}").into(),
+                ))
+                .await;
+            return;
+        }
+    };
+
+    let (out_tx, mut out_rx) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
+    thread::spawn(move || {
+        let mut buffer = [0u8; 8192];
+        loop {
+            match reader.read(&mut buffer) {
+                Ok(0) => break,
+                Ok(count) => {
+                    if out_tx.send(buffer[..count].to_vec()).is_err() {
+                        break;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+    });
+
+    let (in_tx, in_rx) = std_mpsc::channel::<Vec<u8>>();
+    thread::spawn(move || {
+        for data in in_rx {
+            if writer.write_all(&data).is_err() {
+                break;
+            }
+            let _ = writer.flush();
+        }
+    });
+
+    info!(target: "workamon::terminal", "sesi terminal host dibuka");
+    let (mut sender, mut receiver) = socket.split();
+    loop {
+        tokio::select! {
+            data = out_rx.recv() => {
+                match data {
+                    Some(data) => {
+                        if sender.send(Message::Binary(data.into())).await.is_err() {
+                            break;
+                        }
+                    }
+                    None => break,
+                }
+            }
+            message = receiver.next() => {
+                match message {
+                    Some(Ok(Message::Text(text))) => {
+                        if let Ok(value) = serde_json::from_str::<Value>(text.as_str()) {
+                            match value.get("type").and_then(Value::as_str) {
+                                Some("input") => {
+                                    if let Some(data) = value.get("data").and_then(Value::as_str) {
+                                        let _ = in_tx.send(data.as_bytes().to_vec());
+                                    }
+                                }
+                                Some("resize") => {
+                                    let rows = value.get("rows").and_then(Value::as_u64).unwrap_or(28) as u16;
+                                    let cols = value.get("cols").and_then(Value::as_u64).unwrap_or(120) as u16;
+                                    let _ = master.resize(PtySize {
+                                        rows: rows.max(2),
+                                        cols: cols.max(2),
+                                        pixel_width: 0,
+                                        pixel_height: 0,
+                                    });
+                                }
+                                _ => {}
+                            }
+                        } else {
+                            let _ = in_tx.send(text.as_str().as_bytes().to_vec());
+                        }
+                    }
+                    Some(Ok(Message::Binary(data))) => {
+                        let _ = in_tx.send(data.to_vec());
+                    }
+                    Some(Ok(Message::Close(_))) | None => break,
+                    Some(Ok(Message::Ping(_))) | Some(Ok(Message::Pong(_))) => {}
+                    Some(Err(_)) => break,
+                }
+            }
+        }
+    }
+    drop(in_tx);
+    let _ = child.kill();
+    info!(target: "workamon::terminal", "sesi terminal host ditutup");
+}
+
+fn origin_allowed(headers: &HeaderMap) -> bool {
+    let Some(origin) = headers
+        .get(header::ORIGIN)
+        .and_then(|value| value.to_str().ok())
+    else {
+        return true;
+    };
+    let host = headers
+        .get("x-forwarded-host")
+        .or_else(|| headers.get(header::HOST))
+        .and_then(|value| value.to_str().ok());
+    let Some(host) = host else {
+        return false;
+    };
+    let origin_host = origin.split("://").nth(1).unwrap_or(origin);
+    origin_host.eq_ignore_ascii_case(host)
 }
 
 #[derive(Deserialize, Default)]
@@ -1751,10 +2629,10 @@ async fn container_action(
     Query(query): Query<ActionQuery>,
 ) -> Response {
     let lang = Lang::from_headers(&headers);
-    let back_path = if query.back.as_deref() == Some("detail") {
-        format!("/containers/{}", util::url_encode(&id))
-    } else {
-        "/containers".to_string()
+    let back_path = match query.back.as_deref() {
+        Some("detail") => format!("/containers/{}", util::url_encode(&id)),
+        Some("apps") => "/apps".to_string(),
+        _ => "/containers".to_string(),
     };
 
     if !matches!(action.as_str(), "start" | "stop" | "restart" | "delete") {
@@ -1781,7 +2659,12 @@ async fn container_action(
         {
             Ok(Ok(())) => {
                 info!(target: "workamon::container", "container {id} dihapus");
-                redirect_msg("/containers", "ok", &i18n::t(lang, "msg_container_remove_ok"))
+                let target = if query.back.as_deref() == Some("apps") {
+                    "/apps"
+                } else {
+                    "/containers"
+                };
+                redirect_msg(target, "ok", &i18n::t(lang, "msg_container_remove_ok"))
             }
             Ok(Err(error)) => {
                 warn!(target: "workamon::container", "gagal menghapus container {id}: {error:#}");
@@ -2312,6 +3195,82 @@ async fn api_container_stats(
     .into_response()
 }
 
+async fn api_apps_live(State(state): State<AppState>, headers: HeaderMap) -> Json<Value> {
+    let lang = Lang::from_headers(&headers);
+    let live = state.live.read().await;
+    let services: Vec<Value> = live
+        .services
+        .iter()
+        .map(|service| {
+            let view = service_view(service, lang);
+            json!({
+                "unit": service.unit,
+                "status": view.get("status").cloned().unwrap_or(Value::Null),
+                "status_class": view.get("status_class").cloned().unwrap_or(Value::Null),
+                "enabled_text": view.get("enabled_text").cloned().unwrap_or(Value::Null),
+                "enabled_class": view.get("enabled_class").cloned().unwrap_or(Value::Null),
+                "cpu_text": view.get("cpu_text").cloned().unwrap_or(Value::Null),
+                "mem_text": view.get("mem_text").cloned().unwrap_or(Value::Null),
+                "net_text": view.get("net_text").cloned().unwrap_or(Value::Null),
+                "disk_text": view.get("disk_text").cloned().unwrap_or(Value::Null),
+            })
+        })
+        .collect();
+    let containers: Vec<Value> = live
+        .containers
+        .iter()
+        .map(|container| {
+            let view = container_view(container, lang);
+            json!({
+                "id": container.id,
+                "name": container.name,
+                "state_text": view.get("state_text").cloned().unwrap_or(Value::Null),
+                "state_class": view.get("state_class").cloned().unwrap_or(Value::Null),
+                "cpu_text": view.get("cpu_text").cloned().unwrap_or(Value::Null),
+                "mem_text": view.get("mem_text").cloned().unwrap_or(Value::Null),
+                "net_text": view.get("net_text").cloned().unwrap_or(Value::Null),
+            })
+        })
+        .collect();
+    Json(json!({
+        "services": services,
+        "containers": containers,
+        "services_ok": live.services_ok,
+        "services_error": live.services_error,
+        "docker_ok": live.docker_ok,
+        "docker_error": live.docker_error,
+        "last_update": live.last_update,
+    }))
+}
+
+async fn api_network_live(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Json<Value> {
+    let lang = Lang::from_headers(&headers);
+    let live = state.live.read().await;
+    let snapshot = live.network.clone().unwrap_or_default();
+    let interfaces: Vec<Value> = snapshot
+        .interfaces
+        .iter()
+        .map(network_interface_view)
+        .collect();
+    let cloudflare = cloudflare_views(&live.services, &live.containers, lang);
+    Json(json!({
+        "ok": live.network_ok,
+        "error": live.network_error,
+        "rx_rate_text": format!("{}/s", util::fmt_bytes(snapshot.rx_rate.max(0.0) as u64)),
+        "tx_rate_text": format!("{}/s", util::fmt_bytes(snapshot.tx_rate.max(0.0) as u64)),
+        "rx_total_text": util::fmt_bytes(snapshot.rx_bytes),
+        "tx_total_text": util::fmt_bytes(snapshot.tx_bytes),
+        "default_gateway": if snapshot.default_gateway.is_empty() { "—".to_string() } else { snapshot.default_gateway.clone() },
+        "dns_text": if snapshot.dns_servers.is_empty() { "—".to_string() } else { snapshot.dns_servers.join(", ") },
+        "interfaces": interfaces,
+        "cloudflare": cloudflare,
+        "history": live.network_history,
+    }))
+}
+
 #[derive(Clone, Copy)]
 struct RangeSpec {
     key: &'static str,
@@ -2391,6 +3350,311 @@ fn system_view(sample: &SystemSample, live: &LiveSnapshot, lang: Lang) -> Value 
     })
 }
 
+fn service_metrics(service: &ServiceLive) -> (String, String, String, String) {
+    let mem_text = if service.mem_max > 0 {
+        format!(
+            "{} / {}",
+            util::fmt_bytes(service.mem_used),
+            util::fmt_bytes(service.mem_max)
+        )
+    } else {
+        util::fmt_bytes(service.mem_used)
+    };
+    let net_text = format!(
+        "↓ {}/s · ↑ {}/s",
+        util::fmt_bytes(service.net_rx_rate.max(0.0) as u64),
+        util::fmt_bytes(service.net_tx_rate.max(0.0) as u64)
+    );
+    let disk_text = format!(
+        "R {}/s · W {}/s",
+        util::fmt_bytes(service.disk_read_rate.max(0.0) as u64),
+        util::fmt_bytes(service.disk_write_rate.max(0.0) as u64)
+    );
+    (
+        util::fmt_pct(service.cpu_pct),
+        mem_text,
+        net_text,
+        disk_text,
+    )
+}
+
+fn service_view(service: &ServiceLive, lang: Lang) -> Value {
+    let active = service.active_state == "active";
+    let status_class = if active {
+        "ok"
+    } else if service.active_state == "failed" {
+        "danger"
+    } else {
+        "idle"
+    };
+    let status_text = match service.active_state.as_str() {
+        "active" => i18n::t(lang, "service_active"),
+        "inactive" => i18n::t(lang, "service_inactive"),
+        "failed" => i18n::t(lang, "service_failed"),
+        "activating" => i18n::t(lang, "service_activating"),
+        "deactivating" => i18n::t(lang, "service_deactivating"),
+        "reloading" => i18n::t(lang, "service_reloading"),
+        other => other.to_string(),
+    };
+    let enabled = matches!(
+        service.unit_file_state.as_str(),
+        "enabled" | "enabled-runtime"
+    );
+    let enabled_text = match service.unit_file_state.as_str() {
+        "enabled" | "enabled-runtime" => i18n::t(lang, "service_enabled"),
+        "disabled" => i18n::t(lang, "service_disabled"),
+        "static" => i18n::t(lang, "service_static"),
+        "masked" | "masked-runtime" => i18n::t(lang, "service_masked"),
+        "" | "—" => "—".into(),
+        other => other.to_string(),
+    };
+    let (cpu_text, mem_text, net_text, disk_text) = service_metrics(service);
+    let mem_pct = if service.mem_max > 0 {
+        util::percent(service.mem_used, service.mem_max)
+    } else {
+        0.0
+    };
+
+    json!({
+        "kind": "service",
+        "unit": service.unit.clone(),
+        "name": service.unit.clone(),
+        "description": service.description.clone(),
+        "status": status_text,
+        "status_class": status_class,
+        "active": active,
+        "enabled": enabled,
+        "enabled_text": enabled_text,
+        "enabled_class": if enabled { "ok" } else { "idle" },
+        "cpu_text": cpu_text,
+        "cpu_pct": round1(service.cpu_pct),
+        "mem_text": mem_text,
+        "mem_pct": round1(mem_pct),
+        "net_text": net_text,
+        "disk_text": disk_text,
+        "main_pid": service.main_pid,
+        "sub_state": service.sub_state.clone(),
+        "unit_file_state": service.unit_file_state.clone(),
+        "href": format!("/apps/service?unit={}", util::url_encode(&service.unit)),
+    })
+}
+
+fn package_view(package: &PackageLive) -> Value {
+    json!({
+        "name": package.name,
+        "version": package.version,
+        "architecture": package.architecture,
+        "summary": package.summary,
+    })
+}
+
+fn packages_link(query: &str, page: usize) -> String {
+    let mut link = format!("/packages?page={page}");
+    if !query.is_empty() {
+        link.push_str("&q=");
+        link.push_str(&util::url_encode(query));
+    }
+    link
+}
+
+fn network_view(snapshot: &crate::host::NetworkSnapshot, _lang: Lang) -> Value {
+    json!({
+        "rx_rate_text": format!("{}/s", util::fmt_bytes(snapshot.rx_rate.max(0.0) as u64)),
+        "tx_rate_text": format!("{}/s", util::fmt_bytes(snapshot.tx_rate.max(0.0) as u64)),
+        "rx_total_text": util::fmt_bytes(snapshot.rx_bytes),
+        "tx_total_text": util::fmt_bytes(snapshot.tx_bytes),
+        "default_gateway": if snapshot.default_gateway.is_empty() { "—".to_string() } else { snapshot.default_gateway.clone() },
+        "dns_text": if snapshot.dns_servers.is_empty() { "—".to_string() } else { snapshot.dns_servers.join(", ") },
+        "interface_count": snapshot.interfaces.len(),
+    })
+}
+
+fn network_interface_view(interface: &crate::host::NetworkInterface) -> Value {
+    let state_class = match interface.state.as_str() {
+        "up" => "ok",
+        "down" | "lowerlayerdown" | "notpresent" => "idle",
+        _ => "warn",
+    };
+    json!({
+        "name": interface.name,
+        "state": interface.state,
+        "state_class": state_class,
+        "addresses": if interface.addresses.is_empty() { "—".to_string() } else { interface.addresses.join(", ") },
+        "rx_text": util::fmt_bytes(interface.rx_bytes),
+        "tx_text": util::fmt_bytes(interface.tx_bytes),
+        "rx_rate_text": format!("{}/s", util::fmt_bytes(interface.rx_rate.max(0.0) as u64)),
+        "tx_rate_text": format!("{}/s", util::fmt_bytes(interface.tx_rate.max(0.0) as u64)),
+    })
+}
+
+fn cloudflare_views(
+    services: &[ServiceLive],
+    containers: &[ContainerLive],
+    lang: Lang,
+) -> Vec<Value> {
+    let mut rows = Vec::new();
+    for service in services.iter().filter(|service| {
+        service.unit.to_ascii_lowercase().contains("cloudflared")
+            || service.description.to_ascii_lowercase().contains("cloudflare")
+    }) {
+        let (cpu_text, mem_text, net_text, _) = service_metrics(service);
+        rows.push(json!({
+            "kind": i18n::t(lang, "cloudflare_kind_service"),
+            "name": service.unit,
+            "description": service.description,
+            "state": service.active_state,
+            "state_class": if service.active_state == "active" { "ok" } else { "idle" },
+            "cpu_text": cpu_text,
+            "mem_text": mem_text,
+            "net_text": net_text,
+        }));
+    }
+    for container in containers.iter().filter(|container| {
+        container.name.to_ascii_lowercase().contains("cloudflared")
+            || container.image.to_ascii_lowercase().contains("cloudflared")
+            || container.image.to_ascii_lowercase().contains("cloudflare")
+    }) {
+        rows.push(json!({
+            "kind": i18n::t(lang, "cloudflare_kind_container"),
+            "name": container.name,
+            "description": container.image,
+            "state": container.state,
+            "state_class": if container.state == "running" { "ok" } else { "idle" },
+            "cpu_text": util::fmt_pct(container.cpu_pct),
+            "mem_text": if container.mem_limit > 0 {
+                format!("{} / {}", util::fmt_bytes(container.mem_used), util::fmt_bytes(container.mem_limit))
+            } else {
+                util::fmt_bytes(container.mem_used)
+            },
+            "net_text": format!("↓ {} · ↑ {}", util::fmt_bytes(container.net_rx), util::fmt_bytes(container.net_tx)),
+        }));
+    }
+    rows
+}
+
+struct AppCatalogEntry {
+    package: &'static str,
+    title: &'static str,
+    description_id: &'static str,
+    description_en: &'static str,
+    service: &'static str,
+    port: &'static str,
+}
+
+const APP_CATALOG: &[AppCatalogEntry] = &[
+    AppCatalogEntry {
+        package: "nginx",
+        title: "nginx",
+        description_id: "Web server dan reverse proxy",
+        description_en: "Web server and reverse proxy",
+        service: "nginx.service",
+        port: "80 / 443",
+    },
+    AppCatalogEntry {
+        package: "caddy",
+        title: "Caddy",
+        description_id: "Web server dengan HTTPS otomatis",
+        description_en: "Web server with automatic HTTPS",
+        service: "caddy.service",
+        port: "80 / 443",
+    },
+    AppCatalogEntry {
+        package: "cockpit",
+        title: "Cockpit",
+        description_id: "Dashboard administrasi server berbasis web",
+        description_en: "Web-based server administration dashboard",
+        service: "cockpit.socket",
+        port: "9090",
+    },
+    AppCatalogEntry {
+        package: "samba",
+        title: "Samba",
+        description_id: "Berbagi file SMB/CIFS untuk jaringan lokal",
+        description_en: "SMB/CIFS file sharing for the local network",
+        service: "smbd.service",
+        port: "445",
+    },
+    AppCatalogEntry {
+        package: "mosquitto",
+        title: "Mosquitto",
+        description_id: "Broker MQTT ringan",
+        description_en: "Lightweight MQTT broker",
+        service: "mosquitto.service",
+        port: "1883",
+    },
+    AppCatalogEntry {
+        package: "prometheus-node-exporter",
+        title: "Node Exporter",
+        description_id: "Exporter metrik host untuk Prometheus",
+        description_en: "Host metrics exporter for Prometheus",
+        service: "prometheus-node-exporter.service",
+        port: "9100",
+    },
+    AppCatalogEntry {
+        package: "fail2ban",
+        title: "Fail2ban",
+        description_id: "Perlindungan brute-force untuk layanan login",
+        description_en: "Brute-force protection for login services",
+        service: "fail2ban.service",
+        port: "",
+    },
+    AppCatalogEntry {
+        package: "ufw",
+        title: "UFW",
+        description_id: "Firewall sederhana untuk host",
+        description_en: "Simple host firewall",
+        service: "ufw.service",
+        port: "",
+    },
+    AppCatalogEntry {
+        package: "avahi-daemon",
+        title: "Avahi",
+        description_id: "Discovery layanan mDNS di jaringan lokal",
+        description_en: "mDNS service discovery on the local network",
+        service: "avahi-daemon.service",
+        port: "5353",
+    },
+    AppCatalogEntry {
+        package: "cups",
+        title: "CUPS",
+        description_id: "Server pencetakan jaringan",
+        description_en: "Network print server",
+        service: "cups.service",
+        port: "631",
+    },
+    AppCatalogEntry {
+        package: "netdata",
+        title: "Netdata",
+        description_id: "Monitoring host real-time",
+        description_en: "Real-time host monitoring",
+        service: "netdata.service",
+        port: "19999",
+    },
+    AppCatalogEntry {
+        package: "wireguard",
+        title: "WireGuard",
+        description_id: "VPN ringan (perlu konfigurasi interface)",
+        description_en: "Lightweight VPN (interface configuration required)",
+        service: "wg-quick@wg0.service",
+        port: "",
+    },
+];
+
+fn app_catalog_view(lang: Lang) -> Vec<Value> {
+    APP_CATALOG
+        .iter()
+        .map(|entry| {
+            json!({
+                "package": entry.package,
+                "title": entry.title,
+                "description": if lang == Lang::Id { entry.description_id } else { entry.description_en },
+                "service": entry.service,
+                "port": entry.port,
+            })
+        })
+        .collect()
+}
+
 fn container_view(container: &ContainerLive, lang: Lang) -> Value {
     let state_class = match container.state.as_str() {
         "running" => "ok",
@@ -2427,9 +3691,11 @@ fn container_view(container: &ContainerLive, lang: Lang) -> Value {
     };
 
     json!({
+        "kind": "container",
         "id": container.id.clone(),
         "id_short": util::short_id(&container.id),
         "name": container.name.clone(),
+        "href": format!("/containers/{}", util::url_encode(&container.id)),
         "image": container.image.clone(),
         "image_short": util::truncate_chars(&container.image, 44),
         "state": container.state.clone(),
@@ -2724,6 +3990,8 @@ fn action_label(lang: Lang, action: &str) -> String {
         "stop" => "action_stop",
         "restart" => "action_restart",
         "delete" => "action_delete",
+        "enable" => "action_enable",
+        "disable" => "action_disable",
         _ => return action.to_string(),
     };
     i18n::t(lang, key)

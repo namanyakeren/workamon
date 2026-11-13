@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block crumb %}{{ t.nav_apps }} / {{ t.packages_title }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <a class="back-link" href="/apps">{{ t.apps_back }}</a>
+    <h1>{{ t.packages_title }}</h1>
+    <p class="sub">{{ total }} {{ t.packages_found_after }}</p>
+  </div>
+  <div class="page-actions">
+    <a class="btn" href="/packages"> {{ t.reload }}</a>
+    <a class="btn btn-primary" href="/apps/new">+ {{ t.app_install_button }}</a>
+  </div>
+</div>
+
+{% if not host_ok %}
+<div class="notice notice-warn">
+  <strong>{{ t.host_access_disabled_title }}</strong>
+  {{ host_error or t.host_access_disabled_body }}
+</div>
+{% elif error %}
+<div class="notice notice-warn">
+  <strong>{{ t.packages_unreadable_title }}</strong>
+  {{ error }}
+</div>
+{% endif %}
+
+<section class="panel panel-flush">
+  <form class="filter-bar" method="get" action="/packages">
+    <label class="field field-grow">
+      <span>{{ t.search }}</span>
+      <input type="search" name="q" value="{{ q }}" placeholder="{{ t.packages_search_placeholder }}">
+    </label>
+    <div class="filter-actions">
+      <button type="submit" class="btn">{{ t.apply }}</button>
+      {% if q %}<a class="btn btn-quiet" href="/packages">{{ t.reset }}</a>{% endif %}
+    </div>
+  </form>
+
+  {% if rows|length > 0 %}
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>{{ t.package_name }}</th>
+          <th>{{ t.package_version }}</th>
+          <th>{{ t.package_architecture }}</th>
+          <th>{{ t.package_summary }}</th>
+          <th class="right">{{ t.actions }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for package in rows %}
+        <tr>
+          <td class="strong">{{ package.name }}</td>
+          <td class="mono-sub">{{ package.version }}</td>
+          <td class="mono-sub">{{ package.architecture }}</td>
+          <td>{{ package.summary }}</td>
+          <td class="right">
+            <form method="post" action="/apps/package/action" data-confirm="{{ t.package_remove_confirm|replace('{name}', package.name) }}">
+              <input type="hidden" name="package" value="{{ package.name }}">
+              <input type="hidden" name="action" value="remove">
+              <input type="hidden" name="confirm" value="yes">
+              <button type="submit" class="btn btn-sm btn-danger">{{ t.package_remove }}</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="pager">
+    {% if prev_link %}<a class="btn btn-sm" href="{{ prev_link }}">← {{ t.previous }}</a>{% endif %}
+    <span class="mono-sub">{{ t.page_of }} {{ page }} / {{ total_pages }}</span>
+    {% if next_link %}<a class="btn btn-sm" href="{{ next_link }}">{{ t.next }} →</a>{% endif %}
+  </div>
+  {% else %}
+  <div class="empty">{{ t.packages_empty }}</div>
+  {% endif %}
+</section>
+{% endblock %}

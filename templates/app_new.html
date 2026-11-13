@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block crumb %}{{ t.nav_apps }} / {{ t.app_install_title }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <a class="back-link" href="/apps">{{ t.apps_back }}</a>
+    <h1>{{ t.app_install_title }}</h1>
+    <p class="sub">{{ t.app_install_sub }}</p>
+  </div>
+</div>
+
+{% if not host_ok %}
+<div class="notice notice-warn">
+  <strong>{{ t.host_access_disabled_title }}</strong>
+  {{ host_error or t.host_access_disabled_body }}
+</div>
+{% endif %}
+
+<section class="panel">
+  <header class="panel-head">
+    <div>
+      <h2>{{ t.app_catalog_title }}</h2>
+      <p class="panel-sub">{{ t.app_catalog_sub }}</p>
+    </div>
+  </header>
+  <div class="catalog-grid">
+    {% for app in catalog %}
+    <article class="catalog-card">
+      <div class="catalog-head">
+        <div>
+          <h3>{{ app.title }}</h3>
+          <div class="mono-sub">{{ app.package }}</div>
+        </div>
+        {% if app.port %}<span class="app-type">{{ app.port }}</span>{% endif %}
+      </div>
+      <p>{{ app.description }}</p>
+      <form method="post" action="/apps/install">
+        <input type="hidden" name="package" value="{{ app.package }}">
+        <input type="hidden" name="service" value="{{ app.service }}">
+        <input type="hidden" name="update_index" value="yes">
+        <label class="check-row">
+          <input type="checkbox" name="start" value="yes" checked>
+          <span>{{ t.app_install_start }}</span>
+        </label>
+        <button type="submit" class="btn btn-primary"{% if not host_ok %} disabled{% endif %}>{{ t.app_install_button }}</button>
+      </form>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="panel">
+  <header class="panel-head">
+    <div>
+      <h2>{{ t.app_custom_title }}</h2>
+      <p class="panel-sub">{{ t.app_custom_sub }}</p>
+    </div>
+  </header>
+  <form class="form-grid" method="post" action="/apps/install">
+    <label class="field">
+      <span>{{ t.package_name }}</span>
+      <input type="text" name="package" placeholder="nginx" required pattern="[a-z0-9][a-z0-9+.:-]*">
+      <small>{{ t.package_name_hint }}</small>
+    </label>
+    <label class="field">
+      <span>{{ t.service_unit }}</span>
+      <input type="text" name="service" placeholder="nginx.service">
+      <small>{{ t.service_unit_hint }}</small>
+    </label>
+    <label class="check-row">
+      <input type="checkbox" name="update_index" value="yes" checked>
+      <span>{{ t.app_update_index }}</span>
+    </label>
+    <label class="check-row">
+      <input type="checkbox" name="start" value="yes" checked>
+      <span>{{ t.app_install_start }}</span>
+    </label>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary"{% if not host_ok %} disabled{% endif %}>{{ t.app_install_button }}</button>
+      <a class="btn btn-quiet" href="/apps">{{ t.cancel }}</a>
+    </div>
+  </form>
+</section>
+
+<div class="notice notice-info">
+  <strong>{{ t.app_install_note_title }}</strong>
+  {{ t.app_install_note_body }}
+</div>
+{% endblock %}

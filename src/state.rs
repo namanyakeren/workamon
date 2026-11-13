@@ -12,6 +12,7 @@ use serde_json::json;
 use crate::config::Config;
 use crate::db::Db;
 use crate::docker::ContainerLive;
+use crate::host::{HostAccess, NetworkSample, NetworkSnapshot, ServiceLive};
 use crate::render::Renderer;
 use crate::util;
 
@@ -20,6 +21,7 @@ pub struct AppState {
     pub cfg: Arc<Config>,
     pub db: Db,
     pub docker: Option<bollard::Docker>,
+    pub host: HostAccess,
     pub live: Arc<tokio::sync::RwLock<LiveSnapshot>>,
     pub sessions: Sessions,
     pub renderer: Arc<Renderer>,
@@ -31,6 +33,13 @@ pub struct LiveSnapshot {
     pub system: Option<crate::db::SystemSample>,
     pub history: Vec<crate::db::SystemSample>,
     pub containers: Vec<ContainerLive>,
+    pub services: Vec<ServiceLive>,
+    pub services_ok: bool,
+    pub services_error: Option<String>,
+    pub network: Option<NetworkSnapshot>,
+    pub network_history: Vec<NetworkSample>,
+    pub network_ok: bool,
+    pub network_error: Option<String>,
     pub docker_ok: bool,
     pub docker_error: Option<String>,
     pub last_update: i64,

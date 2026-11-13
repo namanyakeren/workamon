@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block crumb %}{{ t.nav_apps }} / {{ s.name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <a class="back-link" href="/apps">{{ t.apps_back }}</a>
+    <h1>{{ s.name }}</h1>
+    <p class="sub">
+      <span class="status status-{{ s.status_class }}"><i></i>{{ s.status }}</span>
+      <span class="mono-sub">{{ s.description }}</span>
+    </p>
+  </div>
+  <div class="page-actions">
+    {% if s.active %}
+    <form method="post" action="/apps/service/action" data-confirm="{{ t.restart }} {{ s.name }}?">
+      <input type="hidden" name="unit" value="{{ s.unit }}">
+      <input type="hidden" name="action" value="restart">
+      <input type="hidden" name="back" value="/apps/service?unit={{ unit|urlencode }}">
+      <button type="submit" class="btn">{{ t.restart }}</button>
+    </form>
+    <form method="post" action="/apps/service/action" data-confirm="{{ t.stop }} {{ s.name }}?">
+      <input type="hidden" name="unit" value="{{ s.unit }}">
+      <input type="hidden" name="action" value="stop">
+      <input type="hidden" name="back" value="/apps/service?unit={{ unit|urlencode }}">
+      <button type="submit" class="btn btn-danger">{{ t.stop }}</button>
+    </form>
+    {% else %}
+    <form method="post" action="/apps/service/action">
+      <input type="hidden" name="unit" value="{{ s.unit }}">
+      <input type="hidden" name="action" value="start">
+      <input type="hidden" name="back" value="/apps/service?unit={{ unit|urlencode }}">
+      <button type="submit" class="btn btn-primary">{{ t.start }}</button>
+    </form>
+    {% endif %}
+    {% if s.enabled %}
+    <form method="post" action="/apps/service/action" data-confirm="{{ t.disable }} {{ s.name }}?">
+      <input type="hidden" name="unit" value="{{ s.unit }}">
+      <input type="hidden" name="action" value="disable">
+      <input type="hidden" name="back" value="/apps/service?unit={{ unit|urlencode }}">
+      <button type="submit" class="btn">{{ t.disable }}</button>
+    </form>
+    {% else %}
+    <form method="post" action="/apps/service/action">
+      <input type="hidden" name="unit" value="{{ s.unit }}">
+      <input type="hidden" name="action" value="enable">
+      <input type="hidden" name="back" value="/apps/service?unit={{ unit|urlencode }}">
+      <button type="submit" class="btn">{{ t.enable }}</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+{% if not host_ok %}
+<div class="notice notice-warn">
+  <strong>{{ t.host_access_disabled_title }}</strong>
+  {{ host_error or t.host_access_disabled_body }}
+</div>
+{% endif %}
+
+<div class="stat-grid">
+  <article class="stat">
+    <div class="stat-head"><span class="stat-label">{{ t.cpu }}</span><span class="stat-chip">live</span></div>
+    <div class="stat-value">{{ s.cpu_text }}</div>
+    <div class="meter"><span style="width: {{ s.cpu_pct }}%"></span></div>
+    <div class="stat-foot">{{ t.service_cpu_foot }}</div>
+  </article>
+  <article class="stat">
+    <div class="stat-head"><span class="stat-label">{{ t.memory }}</span><span class="stat-chip">{{ s.mem_pct }}%</span></div>
+    <div class="stat-value stat-value-sm">{{ s.mem_text }}</div>
+    <div class="meter"><span style="width: {{ s.mem_pct }}%"></span></div>
+    <div class="stat-foot">{{ t.service_mem_foot }}</div>
+  </article>
+  <article class="stat">
+    <div class="stat-head"><span class="stat-label">{{ t.apps_network }}</span><span class="stat-chip">cgroup</span></div>
+    <div class="stat-value stat-value-sm">{{ s.net_text }}</div>
+    <div class="stat-foot">{{ t.service_net_foot }}</div>
+  </article>
+  <article class="stat">
+    <div class="stat-head"><span class="stat-label">{{ t.apps_disk_io }}</span><span class="stat-chip">cgroup</span></div>
+    <div class="stat-value stat-value-sm">{{ s.disk_text }}</div>
+    <div class="stat-foot">{{ t.service_disk_foot }}</div>
+  </article>
+</div>
+
+<div class="grid-main">
+  <section class="panel">
+    <header class="panel-head"><h2>{{ t.service_properties }}</h2></header>
+    <dl class="kv">
+      <dt>{{ t.service_unit }}</dt><dd class="mono-sub">{{ s.unit }}</dd>
+      <dt>{{ t.status }}</dt><dd>{{ s.status }} · {{ s.sub_state }}</dd>
+      <dt>{{ t.apps_enabled }}</dt><dd>{{ s.enabled_text }}</dd>
+      <dt>{{ t.service_unit_file }}</dt><dd class="mono-sub">{{ s.unit_file_state }}</dd>
+      <dt>{{ t.service_main_pid }}</dt><dd class="mono-sub">{{ s.main_pid }}</dd>
+    </dl>
+  </section>
+
+  <section class="panel">
+    <header class="panel-head">
+      <div>
+        <h2>{{ t.service_logs }}</h2>
+        <p class="panel-sub">{{ t.last_200 }}</p>
+      </div>
+      <a class="link" href="/apps/service?unit={{ unit|urlencode }}">{{ t.reload }} →</a>
+    </header>
+    {% if logs %}
+    <pre class="logs">{{ logs }}</pre>
+    {% else %}
+    <div class="empty">{{ t.no_log_output }}</div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

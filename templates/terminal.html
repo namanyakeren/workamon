@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block crumb %}{{ t.nav_terminal }}{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="/static/xterm.css">
+<script src="/static/xterm.js" defer></script>
+<script src="/static/addon-fit.js" defer></script>
+<script src="/static/terminal.js" defer></script>
+{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ t.terminal_title }}</h1>
+    <p class="sub">{{ t.terminal_sub }}</p>
+  </div>
+  <div class="page-actions">
+    <a class="btn" href="/terminal">{{ t.reload }}</a>
+  </div>
+</div>
+
+{% if not host_ok %}
+<div class="notice notice-warn">
+  <strong>{{ t.host_access_disabled_title }}</strong>
+  {{ host_error or t.host_access_disabled_body }}
+</div>
+{% else %}
+<div class="notice notice-danger">
+  <strong>{{ t.terminal_warning_title }}</strong>
+  {{ t.terminal_warning_body }}
+</div>
+{% endif %}
+
+<section class="panel terminal-panel">
+  <div class="terminal-toolbar">
+    <div class="terminal-status">
+      <span class="dot{% if host_ok %} dot-ok{% else %} dot-off{% endif %}" id="terminal-dot"></span>
+      <span id="terminal-status">{{ t.terminal_connecting }}</span>
+      <span class="mono-sub" id="terminal-shell">{% if host_ok %}{{ t.terminal_host_shell }}{% else %}{{ t.terminal_container_shell }}{% endif %}</span>
+    </div>
+    <div class="actions">
+      <button type="button" class="btn btn-sm" id="terminal-clear">{{ t.terminal_clear }}</button>
+      <button type="button" class="btn btn-sm btn-primary" id="terminal-reconnect"{% if not host_ok %} disabled{% endif %}>{{ t.terminal_reconnect }}</button>
+    </div>
+  </div>
+  <div class="terminal-host" id="terminal" data-host-ok="{{ 'true' if host_ok else 'false' }}"></div>
+</section>
+{% endblock %}

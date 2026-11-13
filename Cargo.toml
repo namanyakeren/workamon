@@ -1,6 +1,6 @@
 [package]
 name = "workamon"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 rust-version = "1.85"
 license = "MIT"
@@ -8,13 +8,14 @@ description = "Pemantau server rumah dan container Docker untuk Raspberry Pi"
 
 [dependencies]
 anyhow = "1.0.104"
-axum = "0.8.9"
+axum = { version = "0.8.9", features = ["ws"] }
 bollard = "0.21.1"
 chrono = { version = "0.4.45", features = ["serde"] }
 futures-util = "0.3.34"
 libc = "0.2.191"
 minijinja = { version = "3.1.0", features = ["serde", "urlencode"] }
 percent-encoding = "2.3.2"
+portable-pty = "0.9.0"
 rand = "0.10.3"
 rusqlite = { version = "0.42.0", features = ["bundled", "chrono"] }
 serde = { version = "1.0.229", features = ["derive"] }

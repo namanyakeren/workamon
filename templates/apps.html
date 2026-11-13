@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+{% block crumb %}{{ t.nav_apps }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ t.apps_title }}</h1>
+    <p class="sub">
+      {{ services_total }} {{ t.apps_services_after }} · {{ services_active }} {{ t.running }}
+      · {{ containers_total }} {{ t.apps_containers_after }} · {{ containers_running }} {{ t.running }}
+    </p>
+  </div>
+  <div class="page-actions">
+    <a class="btn" href="/apps">{{ t.reload }}</a>
+    <a class="btn" href="/packages">{{ t.packages_title }}</a>
+    <a class="btn btn-primary" href="/apps/new">+ {{ t.app_install_button }}</a>
+  </div>
+</div>
+
+{% if not host_ok %}
+<div class="notice notice-warn">
+  <strong>{{ t.host_access_disabled_title }}</strong>
+  {{ host_error or t.host_access_disabled_body }}
+</div>
+{% elif services_error %}
+<div class="notice notice-warn">
+  <strong>{{ t.services_unreadable_title }}</strong>
+  {{ services_error }}
+</div>
+{% endif %}
+
+{% if not docker_ok %}
+<div class="notice notice-warn">
+  <strong>{{ t.docker_unavailable_title }}</strong>
+  {{ docker_error or t.docker_unavailable_body }}
+</div>
+{% endif %}
+
+<section class="panel panel-flush">
+  <form class="filter-bar" method="get" action="/apps">
+    <label class="field field-inline">
+      <span>{{ t.apps_filter_type }}</span>
+      <select name="kind">
+        <option value="all"{% if kind == "all" %} selected{% endif %}>{{ t.apps_filter_all }}</option>
+        <option value="service"{% if kind == "service" %} selected{% endif %}>{{ t.apps_filter_services }}</option>
+        <option value="container"{% if kind == "container" %} selected{% endif %}>{{ t.apps_filter_containers }}</option>
+      </select>
+    </label>
+    <label class="field field-grow">
+      <span>{{ t.search }}</span>
+      <input type="search" name="q" value="{{ q }}" placeholder="{{ t.apps_search_placeholder }}">
+    </label>
+    <div class="filter-actions">
+      <button type="submit" class="btn">{{ t.apply }}</button>
+      {% if q or kind != "all" %}<a class="btn btn-quiet" href="/apps">{{ t.reset }}</a>{% endif %}
+    </div>
+  </form>
+
+  {% if rows|length > 0 %}
+  <div class="table-wrap">
+    <table class="table app-table">
+      <thead>
+        <tr>
+          <th>{{ t.name }}</th>
+          <th>{{ t.type }}</th>
+          <th>{{ t.status }}</th>
+          <th>{{ t.apps_enabled }}</th>
+          <th class="right">{{ t.cpu }}</th>
+          <th>{{ t.memory }}</th>
+          <th>{{ t.apps_network }}</th>
+          <th>{{ t.apps_disk_io }}</th>
+          <th class="right">{{ t.actions }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr data-app-row data-app-kind="{{ row.kind }}" data-app-key="{{ row.name }}">
+          <td>
+            <a class="strong" href="{{ row.href }}">{{ row.name }}</a>
+            <div class="mono-sub">{{ row.description }}</div>
+          </td>
+          <td>
+            {% if row.kind == "service" %}
+            <span class="app-type app-type-service">{{ t.apps_filter_services }}</span>
+            {% else %}
+            <span class="app-type app-type-container">{{ t.apps_filter_containers }}</span>
+            {% endif %}
+          </td>
+          <td>
+            <span class="status status-{{ row.status_class }}"><i></i><span data-app-field="status">{{ row.status }}</span></span>
+            {% if row.sub_state %}<div class="mono-sub">{{ row.sub_state }}</div>{% endif %}
+          </td>
+          <td>
+            {% if row.kind == "service" %}
+            <span class="health health-{{ row.enabled_class }}" data-app-field="enabled">{{ row.enabled_text }}</span>
+            {% else %}
+            <span class="muted">—</span>
+            {% endif %}
+          </td>
+          <td class="num right" data-app-field="cpu_text">{{ row.cpu_text }}</td>
+          <td data-app-field="mem_text">{{ row.mem_text }}</td>
+          <td class="mono-sub" data-app-field="net_text">{{ row.net_text }}</td>
+          <td class="mono-sub" data-app-field="disk_text">
+            {% if row.kind == "service" %}{{ row.disk_text }}{% else %}<span class="muted">—</span>{% endif %}
+          </td>
+          <td class="right">
+            <div class="actions">
+              {% if row.kind == "service" %}
+                {% if row.active %}
+                <form method="post" action="/apps/service/action" data-confirm="{{ t.restart }} {{ row.name }}?">
+                  <input type="hidden" name="unit" value="{{ row.unit }}">
+                  <input type="hidden" name="action" value="restart">
+                  <input type="hidden" name="back" value="/apps">
+                  <button type="submit" class="btn btn-sm">{{ t.restart }}</button>
+                </form>
+                <form method="post" action="/apps/service/action" data-confirm="{{ t.stop }} {{ row.name }}?">
+                  <input type="hidden" name="unit" value="{{ row.unit }}">
+                  <input type="hidden" name="action" value="stop">
+                  <input type="hidden" name="back" value="/apps">
+                  <button type="submit" class="btn btn-sm btn-danger">{{ t.stop }}</button>
+                </form>
+                {% else %}
+                <form method="post" action="/apps/service/action">
+                  <input type="hidden" name="unit" value="{{ row.unit }}">
+                  <input type="hidden" name="action" value="start">
+                  <input type="hidden" name="back" value="/apps">
+                  <button type="submit" class="btn btn-sm btn-primary">{{ t.start }}</button>
+                </form>
+                {% endif %}
+                {% if row.enabled %}
+                <form method="post" action="/apps/service/action" data-confirm="{{ t.disable }} {{ row.name }}?">
+                  <input type="hidden" name="unit" value="{{ row.unit }}">
+                  <input type="hidden" name="action" value="disable">
+                  <input type="hidden" name="back" value="/apps">
+                  <button type="submit" class="btn btn-sm">{{ t.disable }}</button>
+                </form>
+                {% else %}
+                <form method="post" action="/apps/service/action">
+                  <input type="hidden" name="unit" value="{{ row.unit }}">
+                  <input type="hidden" name="action" value="enable">
+                  <input type="hidden" name="back" value="/apps">
+                  <button type="submit" class="btn btn-sm">{{ t.enable }}</button>
+                </form>
+                {% endif %}
+                <a class="btn btn-sm" href="{{ row.href }}">{{ t.logs }}</a>
+              {% else %}
+                {% if row.running %}
+                <form method="post" action="/containers/{{ row.id }}/restart?back=apps" data-confirm="{{ t.restart }} {{ row.name }}?">
+                  <button type="submit" class="btn btn-sm">{{ t.restart }}</button>
+                </form>
+                <form method="post" action="/containers/{{ row.id }}/stop?back=apps" data-confirm="{{ t.stop }} {{ row.name }}?">
+                  <button type="submit" class="btn btn-sm btn-danger">{{ t.stop }}</button>
+                </form>
+                {% else %}
+                <form method="post" action="/containers/{{ row.id }}/start?back=apps">
+                  <button type="submit" class="btn btn-sm btn-primary">{{ t.start }}</button>
+                </form>
+                {% endif %}
+                <form method="post" action="/containers/{{ row.id }}/delete?back=apps" data-confirm="{{ t.delete_container_confirm|replace('{name}', row.name) }}">
+                  <button type="submit" class="btn btn-sm btn-danger">{{ t.delete }}</button>
+                </form>
+                <a class="btn btn-sm" href="{{ row.href }}">{{ t.details }}</a>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty">{{ t.apps_empty }}</div>
+  {% endif %}
+</section>
+
+<p class="hint">{{ t.apps_hint }}</p>
+{% endblock %}

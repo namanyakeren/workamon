@@ -19,6 +19,9 @@ services:
       WORKAMON_SESSION_HOURS: ${WORKAMON_SESSION_HOURS:-168}
       WORKAMON_LOG_RETENTION_DAYS: ${WORKAMON_LOG_RETENTION_DAYS:-14}
       WORKAMON_HOST_ROOT: /host
+      # Fitur systemd, paket, dan terminal host membutuhkan akses host.
+      # Set 0 bila Anda hanya ingin memantau Docker tanpa kontrol host.
+      WORKAMON_HOST_EXEC: ${WORKAMON_HOST_EXEC:-1}
       RUST_LOG: ${RUST_LOG:-workamon=info,tower_http=warn,warn}
       TZ: ${TZ:-Asia/Jakarta}
     volumes:
@@ -27,12 +30,15 @@ services:
       - /:/host:ro
     group_add:
       - "${DOCKER_GID:-999}"
-    user: "1000:1000"
+    # Akses host penuh: nsenter, systemctl, apt-get, dan terminal root.
+    # Ini memberi container hak setara root di host. Lindungi Workamon dengan
+    # password kuat dan jangan membuka port ini langsung ke internet.
+    user: "0:0"
+    privileged: true
+    pid: host
     read_only: true
     tmpfs:
       - /tmp:size=32m
-    security_opt:
-      - no-new-privileges:true
 
 volumes:
   workamon-data:

@@ -154,6 +154,18 @@
     return nice * magnitude;
   }
 
+  function formatBytes(value) {
+    var units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    var number = Math.max(0, Number(value) || 0);
+    var index = 0;
+    while (number >= 1024 && index < units.length - 1) {
+      number /= 1024;
+      index += 1;
+    }
+    var digits = index === 0 ? 0 : number >= 100 ? 0 : number >= 10 ? 1 : 2;
+    return number.toFixed(digits) + ' ' + units[index];
+  }
+
   function clockLabel(ts, wide) {
     var date = new Date(ts * 1000);
     try {
@@ -204,6 +216,7 @@
 
     function label(value) {
       if (unit === 'percent') return Math.round(value) + '%';
+      if (unit === 'bytes') return formatBytes(value) + '/s';
       return String(Math.round(value));
     }
 
@@ -231,7 +244,7 @@
     var midTs = t0 + (t1 - t0) / 2;
     var wide = (t1 - t0) > 86400;
     var last = data[data.length - 1];
-    var classes = { cpu: 'chart-cpu', mem: 'chart-mem', disk: 'chart-disk', containers: 'chart-count' };
+    var classes = { cpu: 'chart-cpu', mem: 'chart-mem', disk: 'chart-disk', containers: 'chart-count', rx_rate: 'chart-cpu', tx_rate: 'chart-mem' };
 
     return '<svg class="chart ' + (classes[key] || 'chart-cpu') + '" viewBox="0 0 ' + width + ' ' + height + '" role="img" aria-label="chart">' +
       '<g class="chart-grid">' + grid + '</g>' +
@@ -276,6 +289,115 @@
 
     refreshCharts();
     window.setInterval(refreshCharts, 5000);
+  }
+
+  var appRows = Array.prototype.slice.call(document.querySelectorAll('[data-app-row]'));
+  if (appRows.length > 0) {
+    var refreshApps = async function () {
+      if (document.hidden) return;
+      try {
+        var response = await fetch('/api/apps/live', {
+          headers: { Accept: 'application/json' },
+          cache: 'no-store'
+        });
+        if (!response.ok) return;
+        var data = await response.json();
+        var services = {};
+        var containers = {};
+        (data.services || []).forEach(function (item) { services[item.unit] = item; });
+        (data.containers || []).forEach(function (item) { containers[item.name] = item; });
+        appRows.forEach(function (row) {
+          var kind = row.getAttribute('data-app-kind');
+          var key = row.getAttribute('data-app-key');
+          var item = kind === 'service' ? services[key] : containers[key];
+          if (!item) return;
+          ['cpu_text', 'mem_text', 'net_text', 'disk_text'].forEach(function (field) {
+            if (item[field] === undefined) return;
+            var target = row.querySelector('[data-app-field="' + field + '"]');
+            if (target) target.textContent = item[field];
+          });
+          if (kind === 'service') {
+            var status = row.querySelector('[data-app-field="status"]');
+            if (status) {
+              status.textContent = item.status;
+              var statusBox = status.closest('.status');
+              if (statusBox) statusBox.className = 'status status-' + item.status_class;
+            }
+            var enabled = row.querySelector('[data-app-field="enabled"]');
+            if (enabled) {
+              enabled.textContent = item.enabled_text;
+              enabled.className = 'health health-' + item.enabled_class;
+            }
+          } else {
+            var state = row.querySelector('[data-app-field="status"]');
+            if (state) {
+              state.textContent = item.state_text;
+              var stateBox = state.closest('.status');
+              if (stateBox) stateBox.className = 'status status-' + item.state_class;
+            }
+          }
+        });
+      } catch (error) {}
+    };
+    refreshApps();
+    window.setInterval(refreshApps, 5000);
+  }
+
+  var netRows = Array.prototype.slice.call(document.querySelectorAll('[data-net-iface]'));
+  var cloudflareRows = Array.prototype.slice.call(document.querySelectorAll('[data-cloudflare-key]'));
+  var netCharts = Array.prototype.slice.call(document.querySelectorAll('[data-net-chart]'));
+  if (netRows.length > 0 || cloudflareRows.length > 0 || netCharts.length > 0 || document.querySelector('[data-net-summary]')) {
+    var refreshNetwork = async function () {
+      if (document.hidden) return;
+      try {
+        var response = await fetch('/api/network/live', {
+          headers: { Accept: 'application/json' },
+          cache: 'no-store'
+        });
+        if (!response.ok) return;
+        var data = await response.json();
+        ['rx_rate_text', 'tx_rate_text', 'rx_total_text', 'tx_total_text', 'default_gateway', 'dns_text'].forEach(function (key) {
+          if (data[key] === undefined) return;
+          document.querySelectorAll('[data-net-summary="' + key + '"]').forEach(function (element) {
+            element.textContent = data[key];
+          });
+        });
+        var interfaces = {};
+        (data.interfaces || []).forEach(function (item) { interfaces[item.name] = item; });
+        netRows.forEach(function (row) {
+          var item = interfaces[row.getAttribute('data-net-iface')];
+          if (!item) return;
+          ['rx_text', 'tx_text', 'rx_rate_text', 'tx_rate_text'].forEach(function (field) {
+            var target = row.querySelector('[data-net-field="' + field + '"]');
+            if (target) target.textContent = item[field];
+          });
+        });
+        var cloudflare = {};
+        (data.cloudflare || []).forEach(function (item) { cloudflare[item.name] = item; });
+        cloudflareRows.forEach(function (row) {
+          var item = cloudflare[row.getAttribute('data-cloudflare-key')];
+          if (!item) return;
+          var state = row.querySelector('[data-cf-field="state"]');
+          if (state) {
+            state.textContent = item.state;
+            var stateBox = state.closest('.status');
+            if (stateBox) stateBox.className = 'status status-' + item.state_class;
+          }
+          var cpu = row.querySelector('[data-cf-field="cpu_text"]');
+          if (cpu) cpu.textContent = item.cpu_text + ' CPU';
+          var mem = row.querySelector('[data-cf-field="mem_text"]');
+          if (mem) mem.textContent = item.mem_text;
+          var net = row.querySelector('[data-cf-field="net_text"]');
+          if (net) net.textContent = item.net_text;
+        });
+        netCharts.forEach(function (element) {
+          var key = element.getAttribute('data-net-chart');
+          element.innerHTML = buildChart(data.history || [], key, 'bytes');
+        });
+      } catch (error) {}
+    };
+    refreshNetwork();
+    window.setInterval(refreshNetwork, 5000);
   }
 
   document.querySelectorAll('time[data-ts]').forEach(function (element) {

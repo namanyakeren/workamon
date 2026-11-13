@@ -17,7 +17,8 @@ RUN cargo build --release --locked
 FROM debian:bookworm-slim
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl tzdata \
+    && apt-get install -y --no-install-recommends \
+        bash ca-certificates curl iproute2 iputils-ping procps tzdata util-linux \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 1000 workamon \
     && useradd --uid 1000 --gid 1000 --create-home --shell /usr/sbin/nologin workamon \
