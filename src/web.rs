@@ -53,6 +53,15 @@ pub fn router(state: AppState) -> Router {
         .route("/static/app.css", get(asset_css))
         .route("/static/app.js", get(asset_js))
         .route("/static/favicon.svg", get(asset_favicon))
+        .route("/static/fonts/manrope-latin.woff2", get(asset_manrope))
+        .route(
+            "/static/fonts/space-grotesk-latin.woff2",
+            get(asset_space_grotesk),
+        )
+        .route(
+            "/static/fonts/jetbrains-mono-latin.woff2",
+            get(asset_jetbrains_mono),
+        )
         .merge(protected)
         .fallback(not_found)
         .layer(SetResponseHeaderLayer::overriding(
@@ -70,7 +79,7 @@ pub fn router(state: AppState) -> Router {
         .layer(SetResponseHeaderLayer::overriding(
             HeaderName::from_static("content-security-policy"),
             HeaderValue::from_static(
-                "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'",
+                "default-src 'self'; font-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'",
             ),
         ))
         .with_state(state)
@@ -92,6 +101,33 @@ async fn asset_js() -> Response {
 
 async fn asset_favicon() -> Response {
     asset(include_str!("../assets/favicon.svg"), "image/svg+xml")
+}
+
+async fn asset_manrope() -> Response {
+    font_asset(include_bytes!("../assets/fonts/manrope-latin.woff2"))
+}
+
+async fn asset_space_grotesk() -> Response {
+    font_asset(include_bytes!("../assets/fonts/space-grotesk-latin.woff2"))
+}
+
+async fn asset_jetbrains_mono() -> Response {
+    font_asset(include_bytes!("../assets/fonts/jetbrains-mono-latin.woff2"))
+}
+
+fn font_asset(body: &'static [u8]) -> Response {
+    let mut response = Response::new(axum::body::Body::from(axum::body::Bytes::from_static(
+        body,
+    )));
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("font/woff2"),
+    );
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("public, max-age=86400"),
+    );
+    response
 }
 
 fn asset(body: &'static str, content_type: &'static str) -> Response {

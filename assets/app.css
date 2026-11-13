@@ -1,3 +1,27 @@
+@font-face {
+  font-family: "Manrope";
+  src: url("/static/fonts/manrope-latin.woff2") format("woff2");
+  font-weight: 400 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Space Grotesk";
+  src: url("/static/fonts/space-grotesk-latin.woff2") format("woff2");
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/static/fonts/jetbrains-mono-latin.woff2") format("woff2");
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   color-scheme: light;
   --bg: #eef4ff;
@@ -24,8 +48,9 @@
   --chart-mem: #7c3aed;
   --chart-disk: #f59e0b;
   --chart-count: #ec4899;
-  --sans: "Inter", "Helvetica Neue", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --mono: ui-monospace, "SFMono-Regular", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;
+  --sans: "Manrope", "Avenir Next", "Segoe UI Variable", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+  --display: "Space Grotesk", "Manrope", "Avenir Next", ui-sans-serif, system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;
   --shadow-sm: 0 1px 2px rgba(15, 27, 51, 0.05), 0 4px 14px rgba(37, 99, 235, 0.06);
   --shadow-md: 0 8px 30px rgba(37, 99, 235, 0.12);
   --radius: 10px;
@@ -75,7 +100,7 @@ body {
   color: var(--ink);
   font-family: var(--sans);
   font-size: 15px;
-  line-height: 1.5;
+  line-height: 1.55;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -96,7 +121,9 @@ code {
 h1,
 h2,
 h3 {
+  font-family: var(--display);
   font-weight: 650;
+  letter-spacing: -0.025em;
 }
 
 .skip {
@@ -163,13 +190,14 @@ h3 {
   display: flex;
   align-items: baseline;
   gap: 5px;
-  font-family: var(--mono);
-  font-size: 14px;
-  letter-spacing: 0.08em;
+  font-family: var(--display);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
 }
 
 .brand-text strong {
-  font-weight: 650;
+  font-weight: 700;
 }
 
 .brand-text span {
@@ -179,8 +207,8 @@ h3 {
 
 .side-label {
   padding: 10px 8px;
-  font: 10px/1 var(--mono);
   color: var(--faint);
+  font: 700 10px/1 var(--sans);
   text-transform: uppercase;
   letter-spacing: 0.14em;
 }
@@ -240,8 +268,9 @@ h3 {
   display: flex;
   align-items: center;
   gap: 7px;
-  font: 10px var(--mono);
   color: var(--faint);
+  font: 600 10px var(--sans);
+  font-variant-numeric: tabular-nums;
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
@@ -267,8 +296,8 @@ h3 {
 }
 
 .topbar-title {
-  font: 11px/1 var(--mono);
   color: var(--muted);
+  font: 700 11px/1 var(--sans);
   text-transform: uppercase;
   letter-spacing: 0.1em;
 }
@@ -283,8 +312,8 @@ h3 {
   display: flex;
   align-items: center;
   gap: 6px;
-  font: 10px var(--mono);
   color: var(--muted);
+  font: 700 10px var(--sans);
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
@@ -325,8 +354,8 @@ h1 {
 
 .page-meta {
   padding-top: 6px;
-  font: 11px var(--mono);
   color: var(--faint);
+  font: 600 11px var(--sans);
 }
 
 .page-actions {
@@ -343,8 +372,8 @@ h1 {
 .back-link {
   display: inline-block;
   margin-bottom: 8px;
-  font: 11px var(--mono);
   color: var(--muted);
+  font: 700 11px var(--sans);
   text-decoration: none;
 }
 
@@ -376,28 +405,29 @@ h1 {
 }
 
 .stat-label {
-  font: 10px var(--mono);
   color: var(--muted);
+  font: 700 10px var(--sans);
   text-transform: uppercase;
   letter-spacing: 0.1em;
 }
 
 .stat-chip {
-  font: 10px var(--mono);
   color: var(--faint);
+  font: 700 10px var(--sans);
   white-space: nowrap;
 }
 
 .stat-value {
   overflow: hidden;
-  font: 600 22px/1.2 var(--mono);
-  letter-spacing: -0.03em;
+  font: 600 23px/1.2 var(--display);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.025em;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .stat-value-sm {
-  font-size: 15px;
+  font-size: 16px;
   letter-spacing: -0.01em;
   white-space: normal;
 }
@@ -405,8 +435,8 @@ h1 {
 .stat-foot {
   overflow: hidden;
   margin-top: 9px;
-  font: 11px var(--mono);
   color: var(--faint);
+  font: 600 11px var(--sans);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -468,9 +498,10 @@ h1 {
 
 .panel-head h2 {
   margin: 0;
-  font-size: 14px;
+  font-family: var(--display);
+  font-size: 15px;
   font-weight: 650;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.015em;
 }
 
 .panel-sub {
@@ -481,8 +512,8 @@ h1 {
 
 .link {
   padding-top: 2px;
-  font: 11px var(--mono);
   color: var(--accent);
+  font: 700 11px var(--sans);
   text-decoration: none;
   white-space: nowrap;
 }
@@ -511,8 +542,8 @@ h1 {
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 2px;
-  font: 10px var(--mono);
   color: var(--muted);
+  font: 700 10px var(--sans);
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
@@ -590,7 +621,7 @@ h1 {
   border: 1px dashed var(--line);
   border-radius: 2px;
   color: var(--faint);
-  font: 11px var(--mono);
+  font: 500 12px var(--sans);
 }
 
 .sparkline {
@@ -620,12 +651,13 @@ h1 {
 }
 
 .count-strip strong {
-  font: 600 20px var(--mono);
+  font: 600 21px var(--display);
+  font-variant-numeric: tabular-nums;
 }
 
 .count-strip span {
-  font: 10px var(--mono);
   color: var(--muted);
+  font: 700 10px var(--sans);
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
@@ -665,7 +697,8 @@ h1 {
 
 .mini-meta {
   margin-left: auto;
-  font: 10.5px var(--mono);
+  font: 600 10.5px var(--sans);
+  font-variant-numeric: tabular-nums;
   color: var(--faint);
   white-space: nowrap;
 }
@@ -677,7 +710,7 @@ h1 {
 .table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12.5px;
+  font-size: 13px;
 }
 
 .table th {
@@ -685,7 +718,7 @@ h1 {
   background: var(--surface);
   border-bottom: 1px solid var(--line-strong);
   color: var(--muted);
-  font: 10px var(--mono);
+  font: 700 10px var(--sans);
   text-align: left;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -724,7 +757,7 @@ h1 {
 
 .num {
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: 12.5px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -743,8 +776,8 @@ h1 {
 }
 
 .mono-sub {
-  font: 10.5px/1.45 var(--mono);
   color: var(--faint);
+  font: 11px/1.5 var(--mono);
   word-break: break-all;
 }
 
@@ -753,13 +786,13 @@ h1 {
 }
 
 .cell-value {
-  font: 11.5px var(--mono);
+  font: 12px var(--mono);
   white-space: nowrap;
 }
 
 .log-message {
   max-width: 760px;
-  font: 11.5px/1.5 var(--mono);
+  font: 12px/1.55 var(--mono);
   word-break: break-word;
 }
 
@@ -770,7 +803,7 @@ h1 {
   padding: 2px 6px;
   border: 1px solid var(--line);
   border-radius: 2px;
-  font: 10px var(--mono);
+  font: 700 10px var(--sans);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   white-space: nowrap;
@@ -812,7 +845,7 @@ h1 {
   display: inline-block;
   padding: 2px 6px;
   border-radius: 2px;
-  font: 10px var(--mono);
+  font: 700 10px var(--sans);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -1073,21 +1106,21 @@ h1 {
 .empty {
   padding: 24px 16px;
   color: var(--faint);
-  font: 11px var(--mono);
+  font: 500 12px var(--sans);
   text-align: center;
 }
 
 .hint {
   margin: 10px 0 0;
   color: var(--faint);
-  font-size: 11.5px;
-  line-height: 1.6;
+  font-size: 12px;
+  line-height: 1.65;
 }
 
 .subhead {
   margin: 18px 0 8px;
   color: var(--muted);
-  font: 10px var(--mono);
+  font: 700 10px var(--sans);
   text-transform: uppercase;
   letter-spacing: 0.1em;
 }
@@ -1097,7 +1130,7 @@ h1 {
   flex-direction: column;
   gap: 5px;
   color: var(--muted);
-  font: 10px var(--mono);
+  font: 700 10px var(--sans);
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
@@ -1175,7 +1208,7 @@ h1 {
 .kv dt {
   padding-top: 2px;
   color: var(--faint);
-  font: 10px var(--mono);
+  font: 700 10px var(--sans);
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
@@ -1218,7 +1251,7 @@ h1 {
   border: 1px solid var(--line);
   border-radius: 2px;
   color: var(--ink);
-  font: 11.5px/1.55 var(--mono);
+  font: 12px/1.6 var(--mono);
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -1235,7 +1268,7 @@ h1 {
   padding: 6px 10px;
   border-right: 1px solid var(--line);
   color: var(--muted);
-  font: 10.5px var(--mono);
+  font: 700 10.5px var(--sans);
   text-decoration: none;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -1262,7 +1295,8 @@ h1 {
   gap: 12px;
   margin-top: 12px;
   color: var(--muted);
-  font: 11px var(--mono);
+  font: 600 11px var(--sans);
+  font-variant-numeric: tabular-nums;
 }
 
 .pagination-actions {
@@ -1334,7 +1368,9 @@ h1 {
 
 .metric-line strong {
   color: var(--ink);
-  font: 600 20px var(--mono);
+  font: 600 21px var(--display);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
 }
 
 .footer {
@@ -1345,7 +1381,8 @@ h1 {
   padding: 14px 32px 24px;
   border-top: 1px solid var(--line);
   color: var(--faint);
-  font: 10px var(--mono);
+  font: 600 10px var(--sans);
+  font-variant-numeric: tabular-nums;
 }
 
 .login-body {
@@ -1414,14 +1451,16 @@ h1 {
 
 .login-points span {
   color: var(--accent);
-  font: 10px var(--mono);
+  font: 600 11px var(--display);
+  font-variant-numeric: tabular-nums;
 }
 
 .login-foot {
   padding-top: 28px;
   margin-top: auto;
   color: var(--faint);
-  font: 10px var(--mono);
+  font: 600 10px var(--sans);
+  font-variant-numeric: tabular-nums;
 }
 
 .login-panel {
@@ -1661,7 +1700,7 @@ body {
   padding: 4px 8px;
   border-radius: 999px;
   color: var(--muted);
-  font: 600 10px/1 var(--mono);
+  font: 700 10px/1 var(--sans);
   letter-spacing: 0.06em;
   text-decoration: none;
 }
@@ -1685,7 +1724,7 @@ body {
   background: var(--ok-soft);
   border-radius: 999px;
   color: var(--ok);
-  font: 600 10px var(--mono);
+  font: 700 10px var(--sans);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   vertical-align: middle;
