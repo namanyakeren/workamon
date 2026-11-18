@@ -1,6 +1,6 @@
 # WORKA MON
 
-Versi 0.3.0. Panel server rumah untuk Raspberry Pi dan mesin Linux kecil. Satu
+Versi 0.3.6. Panel server rumah untuk Raspberry Pi dan mesin Linux kecil. Satu
 halaman untuk melihat CPU, RAM, penyimpanan host, container Docker, service
 systemd, paket terpasang, jaringan, dan Cloudflare Tunnel. Workamon juga bisa
 memasang aplikasi dari katalog paket Debian, mengelola service, dan membuka
@@ -13,21 +13,25 @@ terang sebagai default, dan tombol tema gelap di kanan atas (atau `Shift + D`).
 
 - Ringkasan CPU, RAM, swap, disk, load average, suhu, dan uptime host.
 - Daftar container Docker: status, healthcheck, image, port, CPU, memori, jaringan.
-- Aksi start, stop, restart, dan hapus container langsung dari browser.
+- Aksi start, stop, restart, dan hapus container langsung dari browser. Status
+  container diperbarui segera setelah aksi berhasil, tanpa refresh manual.
 - Buat container baru dari image lokal, lengkap dengan command, environment,
   port, volume, restart policy, dan opsi langsung dijalankan.
 - Menu Images untuk melihat image, inspect detail, menarik image baru dari
   registry, menghapus image (termasuk force delete), dan prune image dangling.
 - Detail container: informasi inspect, mount, network, log 150 baris terakhir,
   dan grafik riwayat 24 jam.
-- Halaman Apps & services: daftar service systemd dan container Docker dalam
+- Halaman Apps & Services: daftar service systemd dan container Docker dalam
   satu tabel, lengkap dengan status, CPU, memori, jaringan, dan I/O disk per
-  item. Service bisa di-start, stop, restart, enable, dan disable.
+  item. Service bisa di-start, stop, restart, enable, dan disable. Unit template
+  systemd seperti `autovt@.service` disaring agar tidak mengganggu discovery.
 - Katalog instalasi aplikasi Debian/Raspberry Pi OS (nginx, Caddy, Cockpit,
   Samba, Mosquitto, Node Exporter, Fail2ban, UFW, Avahi, CUPS, Netdata,
   WireGuard) plus paket kustom. Daftar paket terpasang bisa dicari dan dihapus.
-- Terminal host live berbasis xterm.js dan WebSocket. Shell berjalan sebagai
-  root di namespace host melalui `nsenter`, tanpa perlu SSH.
+- Terminal host live berbasis xterm.js dan WebSocket. Shell berjalan di namespace
+  host melalui `nsenter`, tanpa perlu SSH. Environment terminal membangun
+  `HOME`, `USER`, dan `PATH` dari user host sehingga tool user seperti
+  `opencode` dapat digunakan. User dapat dipilih dengan `WORKAMON_TERMINAL_USER`.
 - Monitoring jaringan live: interface, alamat IP, kecepatan RX/TX, total
   trafik, gateway default, DNS, grafik trafik, dan status Cloudflare Tunnel
   (`cloudflared`) baik sebagai service systemd maupun container Docker.
@@ -53,6 +57,16 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
+Compose memakai `restart: always`, sehingga container Workamon akan dijalankan
+kembali oleh Docker setelah daemon Docker aktif pasca-reboot host. Pastikan
+Docker Engine juga diaktifkan saat boot (contoh pada systemd: `sudo systemctl
+enable --now docker`). Setelah reboot, verifikasi dengan:
+
+```bash
+docker compose ps
+docker compose logs --tail=100 workamon
+```
+
 Buka `http://IP-SERVER:8080`.
 
 Untuk memakai port host lain, ubah `WORKAMON_PORT` di `.env` (misalnya
@@ -74,9 +88,21 @@ stat -c '%g' /var/run/docker.sock
 ```
 
 Untuk fitur host (systemd, paket, terminal), container dijalankan sebagai root
-dengan `pid: host` dan `privileged: true`. Root host tetap dipasang read-only
-di `/host` untuk pembacaan statistik, sementara perintah host dijalankan lewat
+dengan `pid: host` dan `privileged: true`. Root host dipasang read-only di
+`/host` untuk pembacaan statistik, sementara perintah host dijalankan lewat
 `nsenter` ke namespace host. Named volume `workamon-data` menyimpan database.
+
+Terminal tetap dijalankan dari proses host dengan hak root, tetapi environment
+user dapat diarahkan ke user login host. Jika auto-detection tidak memilih user
+yang benar, isi `.env` seperti berikut lalu recreate container:
+
+```dotenv
+WORKAMON_TERMINAL_USER=nama-user-host
+```
+
+Jika dikosongkan, Workamon mencari user non-root yang memiliki instalasi
+`opencode` di lokasi umum seperti `~/.local/bin`, `~/.opencode/bin`,
+`~/.npm-global/bin`, atau `~/.bun/bin`.
 
 Jika Anda hanya ingin memantau Docker dan tidak membutuhkan kontrol host, set
 `WORKAMON_HOST_EXEC=0` lalu hapus `privileged: true`, `pid: host`, dan
@@ -135,6 +161,7 @@ Semua konfigurasi lewat environment variable.
 | `WORKAMON_LOG_RETENTION_DAYS` | `14` | Retensi log aplikasi. |
 | `WORKAMON_HOST_ROOT` | `/` | Root host untuk disk, suhu, dan `/proc/net/dev`. Di container: `/host`. |
 | `WORKAMON_HOST_EXEC` | `0` | Set `1` untuk mengaktifkan systemd, apt, dan terminal host. Compose default: `1`. |
+| `WORKAMON_TERMINAL_USER` | kosong | User host yang dipakai untuk `HOME`, `USER`, dan path tool terminal. Jika kosong, user dengan instalasi `opencode` akan dicari otomatis. |
 | `WORKAMON_DOCKER` | `1` | Set `0` untuk mematikan integrasi Docker. |
 | `RUST_LOG` | `workamon=info,tower_http=warn,warn` | Filter log tracing. |
 | `TZ` | sistem | Zona waktu tampilan, misal `Asia/Jakarta`. |
@@ -173,6 +200,46 @@ pengguna. Riwayat tetap tersimpan di SQLite.
 - Mount `/:/host:ro` dipakai untuk membaca statistik disk, suhu, dan jaringan
   host. Perintah host berjalan melalui `nsenter` ke namespace host.
 - WebSocket terminal memeriksa header `Origin` dan hanya tersedia setelah login.
+
+## Troubleshooting
+
+### Container tidak muncul setelah reboot
+
+Pastikan Docker aktif saat boot dan Compose dijalankan dari folder proyek:
+
+```bash
+sudo systemctl enable --now docker
+docker compose up -d
+docker compose ps
+```
+
+Policy `restart: always` akan menangani restart container setelah Docker kembali
+aktif. Jika image atau konfigurasi berubah, gunakan `docker compose up -d --build`.
+
+### Service systemd tidak tampil
+
+Pastikan deployment memakai `privileged: true`, `pid: host`, `user: "0:0"`, dan
+`WORKAMON_HOST_EXEC=1`. Workamon hanya mengirim unit service konkret ke
+`systemctl show`; unit template seperti `autovt@.service` sengaja tidak
+ditampilkan karena bukan invocation unit yang valid untuk pengambilan properti.
+
+### `opencode: command not found` di terminal
+
+Tentukan user host secara eksplisit:
+
+```dotenv
+WORKAMON_TERMINAL_USER=nama-user-host
+```
+
+Lalu jalankan ulang container:
+
+```bash
+docker compose up -d --force-recreate
+```
+
+Pastikan executable dapat dijalankan oleh user tersebut dan berada di salah
+satu direktori `PATH` user, misalnya `~/.local/bin/opencode` atau
+`~/.opencode/bin/opencode`.
 
 ## Struktur proyek
 
