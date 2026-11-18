@@ -19,6 +19,7 @@ const MAX_OUTPUT_BYTES: usize = 128 * 1024;
 pub struct HostAccess {
     enabled: bool,
     host_root: PathBuf,
+    terminal_user: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -109,6 +110,7 @@ impl HostAccess {
         Self {
             enabled: cfg.host_exec,
             host_root: cfg.resolved_host_root(),
+            terminal_user: cfg.terminal_user.clone(),
         }
     }
 
@@ -327,7 +329,7 @@ impl HostAccess {
             Ok(output) if output.success => {
                 for line in output.stdout.lines() {
                     if let Some(unit) = line.split_whitespace().next() {
-                        if unit.ends_with(".service") {
+                        if is_service_unit(unit) {
                             units.push(unit.to_string());
                         }
                     }
@@ -355,7 +357,7 @@ impl HostAccess {
             Ok(output) if output.success => {
                 for line in output.stdout.lines() {
                     if let Some(unit) = line.split_whitespace().next() {
-                        if unit.ends_with(".service") {
+                        if is_service_unit(unit) {
                             units.push(unit.to_string());
                         }
                     }
@@ -720,6 +722,49 @@ impl HostAccess {
             ("/bin/sh".into(), vec!["-l".into()])
         }
     }
+
+    pub fn terminal_environment(&self) -> Vec<(String, String)> {
+        if !self.enabled { return Vec::new(); }
+        let mut users = Vec::new();
+        if let Ok(passwd) = std::fs::read_to_string(self.host_root.join("etc/passwd")) {
+            for line in passwd.lines() {
+                let f: Vec<&str> = line.split(':').collect();
+                if f.len() >= 7 && f[2].parse::<u32>().unwrap_or(0) >= 1000
+                    && f[2].parse::<u32>().unwrap_or(0) < 60000
+                    && f[5].starts_with('/') && f[6] != "/usr/sbin/nologin" && f[6] != "/bin/false" {
+                    users.push((f[0].to_string(), f[5].to_string()));
+                }
+            }
+        }
+        users.sort_by(|a, b| a.0.cmp(&b.0));
+        let selected = self.terminal_user.as_deref()
+            .and_then(|wanted| users.iter().find(|(name, _)| name == wanted))
+            .cloned()
+            .or_else(|| users.iter().find(|(_, home)| {
+                [".local/bin/opencode", ".opencode/bin/opencode", ".npm-global/bin/opencode", ".bun/bin/opencode"]
+                    .iter().any(|suffix| self.host_root.join(home.trim_start_matches('/')).join(suffix).is_file())
+            }).cloned())
+            .or_else(|| users.first().cloned())
+            .unwrap_or_else(|| ("root".into(), "/root".into()));
+        let mut paths = vec!["/usr/local/sbin", "/usr/local/bin", "/usr/sbin", "/usr/bin", "/sbin", "/bin"]
+            .into_iter().map(String::from).collect::<Vec<_>>();
+        let mut homes = vec![selected.1.clone()];
+        homes.extend(users.iter().map(|(_, home)| home.clone()));
+        homes.sort(); homes.dedup();
+        for home in homes {
+            for suffix in [".local/bin", ".opencode/bin", ".npm-global/bin", ".cargo/bin", ".bun/bin", ".deno/bin"] {
+                let path = format!("{home}/{suffix}");
+                if self.host_root.join(path.trim_start_matches('/')).is_dir() { paths.push(path); }
+            }
+        }
+        paths.sort(); paths.dedup();
+        vec![("PATH".into(), paths.join(":")), ("HOME".into(), selected.1),
+             ("USER".into(), selected.0.clone()), ("LOGNAME".into(), selected.0)]
+    }
+}
+
+fn is_service_unit(unit: &str) -> bool {
+    unit.ends_with(".service") && !unit.contains("@.") && !unit.starts_with('-')
 }
 
 fn parse_properties(block: &str) -> HashMap<String, String> {

@@ -3,7 +3,7 @@ services:
     build: .
     image: workamon:latest
     container_name: workamon
-    restart: unless-stopped
+    restart: always
     ports:
       # Port host bisa diganti lewat WORKAMON_PORT di .env,
       # misalnya WORKAMON_PORT=9090. Port internal container tetap 8080.
@@ -22,6 +22,7 @@ services:
       # Fitur systemd, paket, dan terminal host membutuhkan akses host.
       # Set 0 bila Anda hanya ingin memantau Docker tanpa kontrol host.
       WORKAMON_HOST_EXEC: ${WORKAMON_HOST_EXEC:-1}
+      WORKAMON_TERMINAL_USER: ${WORKAMON_TERMINAL_USER:-}
       RUST_LOG: ${RUST_LOG:-workamon=info,tower_http=warn,warn}
       TZ: ${TZ:-Asia/Jakarta}
     volumes:

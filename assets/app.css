@@ -1405,6 +1405,11 @@ h1 {
   border-radius: 4px;
 }
 
+/* Login is intentionally a single centered form. */
+.login-shell { display: block; width: min(460px, 100%); min-height: 0; }
+.login-panel { position: relative; padding: 68px 48px 42px; }
+.login-version { margin-top: 18px; color: var(--faint); font: 600 10px var(--mono); letter-spacing: .08em; text-align: center; }
+
 .login-intro {
   display: flex;
   flex-direction: column;

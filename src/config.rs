@@ -17,6 +17,7 @@ pub struct Config {
     pub container_sample_secs: u64,
     pub host_root: PathBuf,
     pub host_exec: bool,
+    pub terminal_user: Option<String>,
     pub docker_enabled: bool,
     pub session_hours: i64,
     pub log_retention_days: i64,
@@ -51,6 +52,10 @@ impl Config {
         let host_exec = env::var("WORKAMON_HOST_EXEC")
             .map(|v| matches!(v.trim().to_ascii_lowercase().as_str(), "1" | "true" | "on" | "yes"))
             .unwrap_or(false);
+        let terminal_user = env::var("WORKAMON_TERMINAL_USER")
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
         let docker_enabled = env::var("WORKAMON_DOCKER")
             .map(|v| !matches!(v.trim().to_ascii_lowercase().as_str(), "0" | "false" | "off" | "no"))
             .unwrap_or(true);
@@ -82,6 +87,7 @@ impl Config {
             container_sample_secs,
             host_root,
             host_exec,
+            terminal_user,
             docker_enabled,
             session_hours,
             log_retention_days,

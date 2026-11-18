@@ -24,6 +24,7 @@ use crate::db::{DbStats, LogRow, SystemSample};
 use crate::docker::{self, ContainerLive, DfView, NewContainer};
 use crate::host::{self, PackageLive, ServiceLive};
 use crate::i18n::{self, Lang};
+use crate::monitor;
 use crate::render::line_chart;
 use crate::state::{
     clear_session_cookie, constant_time_eq, cookie_value, require_auth, session_cookie, AppState,
@@ -1177,12 +1178,14 @@ fn spawn_terminal_command(
     slave: &dyn portable_pty::SlavePty,
     program: &str,
     args: &[String],
+    environment: &[(String, String)],
 ) -> anyhow::Result<Box<dyn portable_pty::Child + Send + Sync>> {
     let mut command = CommandBuilder::new(program);
     for arg in args {
         command.arg(arg);
     }
     command.env("TERM", "xterm-256color");
+    for (key, value) in environment { command.env(key, value); }
     slave.spawn_command(command)
 }
 
@@ -1206,7 +1209,8 @@ async fn terminal_session(mut socket: WebSocket, state: AppState) {
     };
 
     let (program, args) = state.host.shell_command();
-    let first_spawn = spawn_terminal_command(pair.slave.as_ref(), &program, &args);
+    let environment = state.host.terminal_environment();
+    let first_spawn = spawn_terminal_command(pair.slave.as_ref(), &program, &args, &environment);
     let mut child = match first_spawn {
         Ok(child) => child,
         Err(first_error) => {
@@ -1221,7 +1225,7 @@ async fn terminal_session(mut socket: WebSocket, state: AppState) {
                 })
                 .collect();
             if program == "nsenter" && fallback_args != args {
-                match spawn_terminal_command(pair.slave.as_ref(), "nsenter", &fallback_args) {
+                match spawn_terminal_command(pair.slave.as_ref(), "nsenter", &fallback_args, &environment) {
                     Ok(child) => child,
                     Err(second_error) => {
                         let _ = socket
@@ -2659,6 +2663,7 @@ async fn container_action(
         {
             Ok(Ok(())) => {
                 info!(target: "workamon::container", "container {id} dihapus");
+                monitor::refresh_containers(&state).await;
                 let target = if query.back.as_deref() == Some("apps") {
                     "/apps"
                 } else {
@@ -2698,6 +2703,7 @@ async fn container_action(
                 id,
                 action
             );
+            monitor::refresh_containers(&state).await;
             redirect_msg(
                 &back_path,
                 "ok",

@@ -12,6 +12,18 @@ use crate::util;
 
 const MAX_LIVE_POINTS: usize = 1_800;
 
+/// Refresh container state immediately after a user-triggered Docker action.
+pub async fn refresh_containers(state: &AppState) {
+    let Some(docker) = &state.docker else { return; };
+    let mut previous = HashMap::new();
+    let Ok(containers) = docker::collect(docker, &mut previous).await else { return; };
+    let mut live = state.live.write().await;
+    live.containers = containers;
+    live.docker_ok = true;
+    live.docker_error = None;
+    live.last_update = util::now();
+}
+
 pub async fn run(state: AppState) {
     // Data live diperbarui paling lambat setiap 5 detik. Sampel database tetap
     // mengikuti WORKAMON_SAMPLE_SECS agar riwayat tidak membengkak.
