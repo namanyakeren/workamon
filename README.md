@@ -1,6 +1,6 @@
 # WORKA MON
 
-Versi 0.3.6. Panel server rumah untuk Raspberry Pi dan mesin Linux kecil. Satu
+Versi 0.3.7. Panel server rumah untuk Raspberry Pi dan mesin Linux kecil. Satu
 halaman untuk melihat CPU, RAM, penyimpanan host, container Docker, service
 systemd, paket terpasang, jaringan, dan Cloudflare Tunnel. Workamon juga bisa
 memasang aplikasi dari katalog paket Debian, mengelola service, dan membuka
@@ -240,6 +240,28 @@ docker compose up -d --force-recreate
 Pastikan executable dapat dijalankan oleh user tersebut dan berada di salah
 satu direktori `PATH` user, misalnya `~/.local/bin/opencode` atau
 `~/.opencode/bin/opencode`.
+
+### `Gagal menjalankan shell host: No such file or directory (os error 2)`
+
+Pada versi 0.3.6 dan sebelumnya, terminal mengisi `HOME` dengan home user host
+(misalnya `/home/pi`). `portable-pty` melakukan `chdir` ke nilai tersebut
+sebelum `exec`, sedangkan path itu tidak ada di dalam mount namespace
+container, sehingga `nsenter` tidak pernah dijalankan. Versi 0.3.7 mematok
+working directory ke `/` sehingga masalah ini tidak lagi muncul.
+
+Setelah memperbarui kode, image container harus dibangun ulang agar binary
+baru terpakai:
+
+```bash
+docker compose build --no-cache
+docker compose up -d --force-recreate
+```
+
+Jika error tetap muncul, pastikan `nsenter` tersedia di image:
+
+```bash
+docker compose exec workamon which nsenter
+```
 
 ## Struktur proyek
 

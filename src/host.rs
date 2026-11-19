@@ -713,6 +713,9 @@ impl HostAccess {
                     "-i".into(),
                     "-n".into(),
                     "-p".into(),
+                    // Setelah masuk mount namespace host, mulai shell di root
+                    // host, bukan di cwd container yang mungkin tidak terlihat.
+                    "--wd=/".into(),
                     "--".into(),
                     "/bin/bash".into(),
                     "-l".into(),

@@ -1184,8 +1184,15 @@ fn spawn_terminal_command(
     for arg in args {
         command.arg(arg);
     }
+    // portable-pty chdirs to $HOME before exec. HOME here points at a host
+    // user's home that may not exist inside the container mount namespace,
+    // which makes spawn fail with ENOENT before nsenter even runs. Pin the
+    // working directory to a path that always exists in the container.
+    command.cwd("/");
     command.env("TERM", "xterm-256color");
-    for (key, value) in environment { command.env(key, value); }
+    for (key, value) in environment {
+        command.env(key, value);
+    }
     slave.spawn_command(command)
 }
 
